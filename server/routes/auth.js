@@ -24,8 +24,8 @@ router.post(
       "INSERT INTO users (name, email, phone, password_hash, role, created_at) VALUES ($1, $2, $3, $4, 'user', $5) RETURNING id",
       [name, email, phone, bcrypt.hashSync(password, 10), nowIso()]
     );
-    const user = { id: row.id, name, email, phone, role: 'user' };
-    res.status(201).json({ token: signToken(user), user });
+    // No token here: new customers log in themselves after creating an account.
+    res.status(201).json({ user: { id: row.id, name, email, phone, role: 'user' } });
   })
 );
 

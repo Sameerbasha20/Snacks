@@ -7,7 +7,8 @@ export default function Login() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [form, setForm] = useState({ email: '', password: '' });
+  const registeredEmail = location.state?.registeredEmail;
+  const [form, setForm] = useState({ email: registeredEmail || '', password: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [shake, setShake] = useState(0);
@@ -32,6 +33,11 @@ export default function Login() {
 
   return (
     <AuthShell title="Log in" subtitle="Log in to order and track your food." shakeKey={shake}>
+      {registeredEmail && (
+        <p role="status" className="mb-6 border-l-2 border-saffron bg-saffron/10 px-4 py-3 text-ink">
+          Account created. Log in with your password to start ordering.
+        </p>
+      )}
       <form onSubmit={submit} className="space-y-5">
         <Field label="Email" type="email" autoComplete="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         <Field label="Password" type="password" autoComplete="current-password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />

@@ -12,7 +12,7 @@ export default function Register() {
   const [error, setError] = useState('');
   const [shake, setShake] = useState(0);
 
-  if (user && !busy) return <Navigate to={homeFor(user)} replace />;
+  if (user) return <Navigate to={homeFor(user)} replace />;
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -21,8 +21,8 @@ export default function Register() {
     setBusy(true);
     setError('');
     try {
-      await register(form);
-      navigate(location.state?.from || '/menu', { replace: true });
+      const u = await register(form);
+      navigate('/login', { replace: true, state: { from: location.state?.from, registeredEmail: u.email } });
     } catch (err) {
       setError(err.message);
       setShake((s) => s + 1);
