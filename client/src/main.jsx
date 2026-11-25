@@ -6,7 +6,10 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './lib/auth';
 import { CartProvider } from './lib/cart';
 import App from './App';
+import { registerAppWorker } from './lib/pwa';
 import './index.css';
+
+registerAppWorker();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

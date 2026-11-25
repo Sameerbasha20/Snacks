@@ -1,5 +1,6 @@
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
+import { randomInt } from 'node:crypto';
 import { config } from './config.js';
 import { ADMIN_SEED, MENU_SEED } from './seedData.js';
 
@@ -58,7 +59,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS menu_items (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
-  category TEXT NOT NULL CHECK (category IN ('snacks','drinks','food')),
+  category TEXT NOT NULL,
   price DOUBLE PRECISION NOT NULL,
   emoji TEXT,
   image_url TEXT,
@@ -103,13 +104,68 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 );
 `;
 
+// Additions after the first release. Every statement is safe to re-run.
+const MIGRATIONS = `
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS combo_items TEXT;
+ALTER TABLE menu_items DROP CONSTRAINT IF EXISTS menu_items_category_check;
+ALTER TABLE menu_items ADD CONSTRAINT menu_items_category_check CHECK (category IN ('combos','snacks','drinks','food'));
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS subtotal DOUBLE PRECISION;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_ref TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS amount_paid DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS paid_at TEXT;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS detail_snapshot TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code TEXT UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_rewarded BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE TABLE IF NOT EXISTS favorites (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  menu_item_id INTEGER NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, menu_item_id)
+);
+CREATE TABLE IF NOT EXISTS ratings (
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  menu_item_id INTEGER NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  stars INTEGER NOT NULL CHECK (stars BETWEEN 1 AND 5),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (order_id, menu_item_id)
+);
+CREATE TABLE IF NOT EXISTS credit_ledger (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount DOUBLE PRECISION NOT NULL,
+  reason TEXT NOT NULL,
+  order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS credit_ledger_user_idx ON credit_ledger (user_id);
+`;
+
 const DEFAULT_SETTINGS = {
   shop_name: 'Snack Shack',
   min_lead_minutes: '60',
   default_cancel_before_minutes: '30',
   open_time: '08:00',
   close_time: '22:00',
+  referral_amount: '20',
 };
+
+/** Short, readable code like SAMEE7K2. Unique across users. */
+export async function makeReferralCode(name, client = pool) {
+  const base = String(name || 'SNACK').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5) || 'SNACK';
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  for (let i = 0; i < 20; i++) {
+    let tail = '';
+    for (let j = 0; j < 3; j++) tail += alphabet[randomInt(alphabet.length)];
+    const code = base + tail;
+    if (!(await one('SELECT 1 FROM users WHERE referral_code = $1', [code], client))) return code;
+  }
+  throw new Error('Could not create a referral code');
+}
 
 /** Create tables and first-run data. Safe to call repeatedly; runs once per process. */
 let ready;
@@ -137,12 +193,38 @@ export function ensureDb() {
         );
       }
     }
+    await pool.query(MIGRATIONS);
+    for (const u of await q("SELECT id, name FROM users WHERE role = 'user' AND referral_code IS NULL")) {
+      await pool.query('UPDATE users SET referral_code = $1 WHERE id = $2', [await makeReferralCode(u.name), u.id]);
+    }
+    await seedCombos();
   })().catch((e) => {
     ready = null; // let the next request retry
     throw e;
   });
   return ready;
 }
+
+/** Sample combos, added once. Skipped if the admin has removed the items they use. */
+async function seedCombos() {
+  if (await one("SELECT 1 FROM settings WHERE key = 'seeded_combos'")) return;
+  const ids = Object.fromEntries((await q('SELECT id, name FROM menu_items')).map((r) => [r.name, r.id]));
+  for (const [name, price, description, image, parts] of COMBO_SEED) {
+    if (!parts.every(([n]) => ids[n])) continue;
+    const combo = JSON.stringify(parts.map(([n, qty]) => ({ menu_item_id: ids[n], qty })));
+    await pool.query(
+      "INSERT INTO menu_items (name, category, price, description, prep_minutes, image_url, combo_items) VALUES ($1, 'combos', $2, $3, 15, $4, $5)",
+      [name, price, description, image, combo]
+    );
+  }
+  await pool.query("INSERT INTO settings (key, value) VALUES ('seeded_combos', '1') ON CONFLICT (key) DO NOTHING");
+}
+
+const COMBO_SEED = [
+  ['Samosa + Chai', 45, 'The classic break: two samosas and a hot masala chai.', '/images/samosa.jpg', [['Samosa (2 pcs)', 1], ['Masala Chai', 1]]],
+  ['Chicken Burger Meal', 279, 'Crispy chicken burger, masala fries and a cold coffee.', '/images/chicken-burger.jpg', [['Crispy Chicken Burger', 1], ['Masala Fries', 1], ['Cold Coffee', 1]]],
+  ['Veg Burger Meal', 209, 'Veg burger, masala fries and a fresh lime soda.', '/images/veg-burger.jpg', [['Veg Burger', 1], ['Masala Fries', 1], ['Fresh Lime Soda', 1]]],
+];
 
 export async function getSettings() {
   const rows = await q('SELECT key, value FROM settings');
@@ -153,6 +235,7 @@ export async function getSettings() {
     default_cancel_before_minutes: Number(s.default_cancel_before_minutes),
     open_time: s.open_time,
     close_time: s.close_time,
+    referral_amount: Number(s.referral_amount),
   };
 }
 
@@ -172,8 +255,11 @@ const ORDER_SQL = `
 async function attachItems(orders, client = pool) {
   if (!orders.length) return orders;
   const items = await q(
-    `SELECT id, order_id, menu_item_id, name_snapshot AS name, emoji_snapshot AS emoji, price_snapshot AS price, qty
-     FROM order_items WHERE order_id = ANY($1::int[]) ORDER BY id`,
+    `SELECT oi.id, oi.order_id, oi.menu_item_id, oi.name_snapshot AS name, oi.detail_snapshot AS detail,
+            oi.emoji_snapshot AS emoji, oi.price_snapshot AS price, oi.qty, r.stars AS rating
+     FROM order_items oi
+     LEFT JOIN ratings r ON r.order_id = oi.order_id AND r.menu_item_id = oi.menu_item_id
+     WHERE oi.order_id = ANY($1::int[]) ORDER BY oi.id`,
     [orders.map((o) => o.id)],
     client
   );

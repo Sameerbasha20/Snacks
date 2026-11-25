@@ -26,16 +26,22 @@ const PATHS = {
   download: 'M12 3v12M7 10l5 5 5-5M5 21h14',
   print: 'M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z',
   refresh: 'M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5',
+  heart: 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z',
+  star: 'M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9Z',
+  gift: 'M4 11h16v9H4zM3 7h18v4H3zM12 7v13M12 7S10.5 3 8 3.5 7.5 7 12 7Zm0 0s1.5-4 4-3.5S16.5 7 12 7Z',
+  share: 'M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v13',
+  copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
+  chart: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
   note: 'M4 4h16v12l-4 4H4zM16 20v-4h4M8 9h8M8 13h5',
 };
 
-export default function Icon({ name, size = 18, className = '', strokeWidth = 2 }) {
+export default function Icon({ name, size = 18, className = '', strokeWidth = 2, filled = false }) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
+      fill={filled ? 'currentColor' : 'none'}
       stroke="currentColor"
       strokeWidth={strokeWidth}
       strokeLinecap="round"

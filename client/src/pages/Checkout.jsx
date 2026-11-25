@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
@@ -8,6 +8,7 @@ import { buildSlots, useSettings } from '../lib/slots';
 import { QtyStepper } from '../components/CartDrawer';
 import FoodImage from '../components/FoodImage';
 import { Spinner } from '../components/AuthShell';
+import DemoPayment from '../components/DemoPayment';
 
 export default function Checkout() {
   const { items, total, setQty, clear } = useCart();
@@ -17,6 +18,18 @@ export default function Checkout() {
   const [slot, setSlot] = useState(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [credit, setCredit] = useState(0);
+  const [useCredit, setUseCredit] = useState(true);
+
+  useEffect(() => {
+    api('/me/rewards')
+      .then((r) => setCredit(r.balance))
+      .catch(() => {});
+  }, []);
+
+  const discount = useCredit ? Math.min(credit, total) : 0;
+  const toPay = Math.round((total - discount) * 100) / 100;
 
   const days = useMemo(() => (settings ? buildSlots(settings) : []), [settings]);
   const day = days[dayIdx];
@@ -33,18 +46,31 @@ export default function Checkout() {
     );
   }
 
-  const place = async () => {
+  const start = () => {
     if (!slot) return toast.error('Choose a pickup time first.');
+    if (toPay > 0) setPaying(true);
+    else place(null); // fully covered by credit
+  };
+
+  const place = async (payment) => {
     setBusy(true);
     try {
       const order = await api('/orders', {
         method: 'POST',
-        body: { pickup_time: slot, note, items: items.map((i) => ({ menu_item_id: i.id, qty: i.qty })) },
+        body: {
+          pickup_time: slot,
+          note,
+          use_credit: discount > 0,
+          payment,
+          items: items.map((i) => ({ menu_item_id: i.id, qty: i.qty })),
+        },
       });
       clear();
       navigate(`/orders/${order.id}`, { state: { justPlaced: true } });
     } catch (e) {
-      toast.error(e.message);
+      setPaying(false);
+      // In live mode the gateway would refund automatically here.
+      toast.error(payment ? `${e.message} Your payment will be refunded.` : e.message);
       setBusy(false);
     }
   };
@@ -137,20 +163,30 @@ export default function Checkout() {
               </li>
             ))}
           </ul>
+          {credit > 0 && (
+            <label className="mt-2 flex cursor-pointer items-center justify-between gap-3 border-t border-line pt-3 text-[0.95rem]">
+              <span className="flex items-center gap-2.5">
+                <input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="h-4 w-4 accent-[#1c1a17]" />
+                Use my credit ({money(credit)})
+              </span>
+              <span className="num font-semibold">{discount > 0 ? `−${money(discount)}` : ''}</span>
+            </label>
+          )}
           <div className="mt-2 flex items-baseline justify-between border-t border-ink pt-4">
-            <span className="font-semibold">Total</span>
-            <span className="num text-2xl font-extrabold">{money(total)}</span>
+            <span className="font-semibold">To pay</span>
+            <span className="num text-2xl font-extrabold">{money(toPay)}</span>
           </div>
           <div className="mt-4 flex items-baseline justify-between rounded-lg bg-paper px-3 py-2.5 text-sm">
             <span className="text-ink/70">Pickup</span>
             <span className="num font-semibold">{slot ? `${fmtDay(slot)} at ${fmtTime(slot)}` : 'Not chosen yet'}</span>
           </div>
-          <button disabled={busy || !slot} onClick={place} className="btn btn-primary mt-4 w-full text-base">
-            {busy ? <Spinner /> : `Place order, ${money(total)}`}
+          <button disabled={busy || !slot} onClick={start} className="btn btn-primary mt-4 w-full text-base">
+            {busy ? <Spinner /> : toPay > 0 ? `Pay ${money(toPay)} and place order` : 'Place order with credit'}
           </button>
-          <p className="mt-2 text-center text-sm text-muted">You pay at the counter when you collect.</p>
+          <p className="mt-2 text-center text-sm text-muted">Paid by UPI. Cancel in time and you get it all back.</p>
         </div>
       </aside>
+      <DemoPayment open={paying} amount={toPay} onClose={() => setPaying(false)} onPaid={place} />
     </div>
   );
 }

@@ -65,7 +65,7 @@ export function CartPanel({ onCheckout }) {
         <span className="font-semibold">Total</span>
         <span className="num text-2xl font-extrabold">{money(total)}</span>
       </div>
-      <p className="mt-1 text-sm text-muted">Pay at the counter when you collect.</p>
+      <p className="mt-1 text-sm text-muted">You pay online when you place the order.</p>
       <button onClick={onCheckout} className="btn btn-primary mt-5 w-full">
         Choose pickup time
       </button>

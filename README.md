@@ -10,6 +10,17 @@ Orders appear on the kitchen screen; when the kitchen marks one ready, the custo
 | **Kitchen** | Kitchen screen: Accept, Start cooking, Mark ready (alerts the customer), Collected |
 | **Admin** | Everything the kitchen can do, plus editing any order (items, pickup time, status, **cancel deadline**), the menu, opening hours and rules, staff accounts, and the QR code poster |
 
+## Customer features
+- **Pay when ordering (UPI, demo mode):** a payment sheet that behaves like UPI checkout but moves no money. A failed payment places no order; cancelling in time marks it refunded. To go live, replace `client/src/components/DemoPayment.jsx` and the check in `server/routes/orders.js` with Razorpay or Cashfree.
+- **Install to home screen:** the site is an installable app (manifest, icons, offline shell in `sw.js`). Android/desktop Chrome get an install button on the menu; iPhone users get Share → Add to Home Screen steps.
+- **Order again:** one tap puts a past order back in the cart at today's prices; sold-out dishes are skipped with a note.
+- **Favourites and combos:** customers heart dishes (shown first on the menu). Admin builds combos from existing dishes in Admin → Menu, sets the price, and customers see what they save. The kitchen sees what is inside each combo.
+- **Referrals (give ₹20, get ₹20):** every customer has a code on the Rewards page. A friend who signs up with it gets credit at once; the referrer gets the same when that friend collects their first order. Credit comes off at checkout and returns if the order is cancelled. The amount is in Admin → Opening hours & rules.
+- **Ratings:** after pickup, customers rate each dish 1–5 stars. Averages show on the menu and in reports.
+
+## Admin: sales reports
+Admin → Sales reports shows revenue by day, busiest pickup hours and best sellers (with ratings) for any date range, grouped by pickup time in the shop's timezone. **Download Excel** exports Summary, Daily, Best sellers, Peak hours and Orders sheets.
+
 ## Hosting (Vercel + Neon)
 - The website and API run on Vercel. `api/index.js` serves every `/api/*` request; the React app is built from `client/`.
 - Data lives in **Neon Postgres**, connected through the Vercel Marketplace (sets `DATABASE_URL`).
@@ -45,7 +56,7 @@ npm run build && npm start   # http://localhost:4000
 ## Rules
 - Lead time (default 60 min), opening hours and the default cancel window (30 min before pickup) are in Admin → Opening hours & rules.
 - The server enforces every rule, so the one-hour rule and cancel deadline can't be bypassed.
-- Prices always come from the menu on the server. Payment is at the counter.
+- Prices always come from the menu on the server, and the server checks the amount paid matches.
 
 ## Photos
 Sample menu photos are free Unsplash images in `client/public/images/` (credits in `CREDITS.md` there).

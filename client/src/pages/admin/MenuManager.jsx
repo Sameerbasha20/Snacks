@@ -1,11 +1,61 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { motion } from 'motion/react';
-import { api, CATEGORY_LABEL, money } from '../../lib/api';
+import { api, CATEGORY_LABEL, MENU_ORDER, money } from '../../lib/api';
 import Modal from '../../components/Modal';
 import FoodImage from '../../components/FoodImage';
+import Icon from '../../components/Icon';
 
 const EMPTY = { name: '', category: 'snacks', price: '', image_url: '', description: '', prep_minutes: 15, is_available: true };
+
+/** Pick the dishes inside a combo and show what customers save. */
+function ComboParts({ parts, setParts, menu, price }) {
+  const options = menu.filter((m) => m.category !== 'combos');
+  const byId = new Map(options.map((m) => [m.id, m]));
+  const regular = parts.reduce((s, p) => s + (byId.get(p.menu_item_id)?.price || 0) * p.qty, 0);
+  const save = regular - Number(price || 0);
+  const update = (idx, patch) => setParts(parts.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
+  return (
+    <fieldset>
+      <legend className="label">What's in the combo</legend>
+      <ul className="space-y-2">
+        {parts.map((p, idx) => (
+          <li key={idx} className="flex gap-2">
+            <select className="input" value={p.menu_item_id || ''} onChange={(e) => update(idx, { menu_item_id: Number(e.target.value) })} aria-label={`Dish ${idx + 1}`}>
+              <option value="">Choose a dish…</option>
+              {options.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}, {money(m.price)}
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min="1"
+              max="20"
+              className="input w-20"
+              value={p.qty}
+              onChange={(e) => update(idx, { qty: Math.max(1, Number(e.target.value) || 1) })}
+              aria-label={`Quantity of dish ${idx + 1}`}
+            />
+            <button type="button" onClick={() => setParts(parts.filter((_, i) => i !== idx))} className="btn btn-quiet px-2 text-muted" aria-label={`Remove dish ${idx + 1}`}>
+              <Icon name="x" size={16} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button type="button" onClick={() => setParts([...parts, { menu_item_id: 0, qty: 1 }])} className="btn btn-quiet mt-1 -ml-2 text-sm">
+        <Icon name="plus" size={15} /> Add a dish
+      </button>
+      {regular > 0 && (
+        <p className="num mt-2 text-sm text-ink/70">
+          Bought separately {money(regular)}.{' '}
+          {save > 0 ? <span className="font-semibold text-ink">Customers save {money(save)}.</span> : 'Set the combo price lower than this so it is a deal.'}
+        </p>
+      )}
+    </fieldset>
+  );
+}
 
 function Toggle({ on, onChange, label }) {
   return (
@@ -35,6 +85,7 @@ export default function MenuManager() {
     e.preventDefault();
     try {
       const body = { ...editing, price: Number(editing.price), prep_minutes: Number(editing.prep_minutes) };
+      if (editing.category === 'combos') body.combo_items = (editing.combo || []).filter((p) => p.menu_item_id);
       if (editing.id) await api(`/menu/${editing.id}`, { method: 'PUT', body });
       else await api('/menu', { method: 'POST', body });
       toast.success(editing.id ? 'Item saved' : 'Item added to the menu');
@@ -77,7 +128,7 @@ export default function MenuManager() {
 
       {!menu && <div className="shimmer mt-6 h-64 rounded-lg" />}
       {menu &&
-        ['snacks', 'food', 'drinks'].map((cat) => {
+        MENU_ORDER.map((cat) => {
           const list = menu.filter((m) => m.category === cat);
           if (!list.length) return null;
           return (
@@ -90,8 +141,14 @@ export default function MenuManager() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold">{m.name}</p>
                       <p className="num text-sm text-ink/60">
-                        {money(m.price)}, about {m.prep_minutes} min
+                        {m.combo ? m.combo.map((p) => `${p.qty}× ${p.name}`).join(', ') : `${money(m.price)}, about ${m.prep_minutes} min`}
                       </p>
+                      {m.combo && (
+                        <p className="num text-sm text-ink/60">
+                          {money(m.price)} instead of {money(m.regular_price)}
+                          {!m.components_available && <span className="font-semibold text-ink">. Hidden: a dish in it is switched off</span>}
+                        </p>
+                      )}
                     </div>
                     <Toggle on={m.is_available} onChange={() => toggle(m)} label={`${m.name} available`} />
                     <button onClick={() => setEditing({ ...m, image_url: m.image_url || '' })} className="btn btn-quiet text-sm">
@@ -134,6 +191,14 @@ export default function MenuManager() {
                 <input className="input" type="number" min="1" value={editing.prep_minutes} onChange={set('prep_minutes')} />
               </label>
             </div>
+            {editing.category === 'combos' && (
+              <ComboParts
+                parts={editing.combo?.length ? editing.combo : [{ menu_item_id: 0, qty: 1 }, { menu_item_id: 0, qty: 1 }]}
+                setParts={(combo) => setEditing({ ...editing, combo })}
+                menu={menu || []}
+                price={editing.price}
+              />
+            )}
             <label className="block">
               <span className="label">Description</span>
               <textarea className="input resize-none" rows={2} value={editing.description} onChange={set('description')} />

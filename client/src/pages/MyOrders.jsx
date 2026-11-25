@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, fmtWhen, money, STATUS_META } from '../lib/api';
+import { useCart } from '../lib/cart';
+import { reorder } from '../lib/customer';
 import { useSocketEvent } from '../lib/socket';
 import { StatusBadge } from '../components/Brand';
 import Icon from '../components/Icon';
 
-function OrderRow({ o }) {
+function OrderRow({ o, onAgain }) {
   const summary = o.items.map((i) => `${i.qty}× ${i.name}`).join(', ');
   return (
-    <li>
-      <Link to={`/orders/${o.id}`} className="group flex items-center gap-4 py-4">
+    <li className="flex items-center gap-3">
+      <Link to={`/orders/${o.id}`} className="group flex min-w-0 flex-1 items-center gap-4 py-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="font-bold">Order {o.id}</span>
@@ -21,12 +23,24 @@ function OrderRow({ o }) {
         <span className="num font-semibold">{money(o.total)}</span>
         <Icon name="arrow" size={18} className="text-muted transition-transform group-hover:translate-x-0.5" />
       </Link>
+      {onAgain && (
+        <button onClick={() => onAgain(o)} className="btn btn-outline min-h-10 shrink-0 px-3 text-sm" aria-label={`Order again: ${summary}`}>
+          Order again
+        </button>
+      )}
     </li>
   );
 }
 
 export default function MyOrders() {
   const [orders, setOrders] = useState(null);
+  const [menu, setMenu] = useState([]);
+  const cart = useCart();
+
+  useEffect(() => {
+    api('/menu').then(setMenu).catch(() => {});
+  }, []);
+  const again = (o) => reorder(o, menu, cart);
 
   useEffect(() => {
     api('/orders/mine').then(setOrders).catch(() => setOrders([]));
@@ -66,7 +80,7 @@ export default function MyOrders() {
           <h2 className="text-xl">Earlier</h2>
           <ul className="mt-2 divide-y divide-line border-y border-line">
             {past.map((o) => (
-              <OrderRow key={o.id} o={o} />
+              <OrderRow key={o.id} o={o} onAgain={again} />
             ))}
           </ul>
         </section>

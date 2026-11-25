@@ -2,7 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
-import { api, fmtTime, fmtWhen, money, relative, STATUS_META } from '../lib/api';
+import { api, fmtTime, fmtWhen, money, paymentText, relative, STATUS_META } from '../lib/api';
+import { useCart } from '../lib/cart';
+import { reorder } from '../lib/customer';
+import { StarInput } from '../components/Stars';
+import Icon from '../components/Icon';
 import { useAuth } from '../lib/auth';
 import { useSocketEvent } from '../lib/socket';
 import StatusTracker from '../components/StatusTracker';
@@ -23,6 +27,74 @@ function ReadyPanel({ order }) {
       <p className="mt-1 text-ink/80">Show this number at the counter.</p>
       <p className="num mt-6 text-[5.5rem] leading-none font-extrabold tracking-tight sm:text-[7rem]">{order.id}</p>
     </motion.div>
+  );
+}
+
+/** After pickup: one star row per dish. Saved ratings stay editable. */
+function RateOrder({ order, onSaved }) {
+  const dishes = order.items.filter((i) => i.menu_item_id);
+  const [stars, setStars] = useState(() => Object.fromEntries(dishes.map((i) => [i.menu_item_id, i.rating || 0])));
+  const [busy, setBusy] = useState(false);
+  const rated = dishes.some((i) => i.rating);
+  const changed = dishes.some((i) => (stars[i.menu_item_id] || 0) !== (i.rating || 0));
+  if (!dishes.length) return null;
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const ratings = Object.entries(stars)
+        .filter(([, n]) => n > 0)
+        .map(([menu_item_id, n]) => ({ menu_item_id: Number(menu_item_id), stars: n }));
+      onSaved(await api(`/orders/${order.id}/ratings`, { method: 'POST', body: { ratings } }));
+      toast.success('Thanks for rating your food.');
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="panel p-6">
+      <h2 className="text-xl">{rated ? 'Your ratings' : 'How was your food?'}</h2>
+      <p className="mt-1 text-sm text-ink/65">Your stars help the kitchen know what to keep and what to fix.</p>
+      <ul className="mt-4 space-y-3">
+        {dishes.map((i) => (
+          <li key={i.menu_item_id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <span className="font-semibold">{i.name}</span>
+            <StarInput label={`Rate ${i.name}`} value={stars[i.menu_item_id] || 0} onChange={(n) => setStars({ ...stars, [i.menu_item_id]: n })} />
+          </li>
+        ))}
+      </ul>
+      {changed && (
+        <button disabled={busy || !Object.values(stars).some(Boolean)} onClick={save} className="btn btn-dark mt-5">
+          {rated ? 'Update ratings' : 'Send ratings'}
+        </button>
+      )}
+    </section>
+  );
+}
+
+function OrderAgainButton({ order }) {
+  const cart = useCart();
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          reorder(order, await api('/menu'), cart);
+        } catch (e) {
+          toast.error(e.message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+      className="btn btn-dark mt-5"
+    >
+      <Icon name="refresh" size={16} /> Order again
+    </button>
   );
 }
 
@@ -94,16 +166,17 @@ export default function OrderTrack() {
           <div className="panel p-6">
             <p className="text-xl font-bold">This order was cancelled</p>
             <p className="mt-1 text-ink/70">
-              {order.cancelled_by === 'admin' ? 'The shop cancelled it. Please ask at the counter if you have questions.' : 'You cancelled it. Nothing to pay.'}
+              {order.cancelled_by === 'admin' ? 'The shop cancelled it.' : 'You cancelled it.'}{' '}
+              {order.payment_status === 'refunded' ? `${money(order.amount_paid)} goes back to your UPI account within 5–7 working days.` : ''}
+              {order.discount > 0 ? ` The ${money(order.discount)} credit you used is back in your account.` : ''}
             </p>
-            <Link to="/menu" className="btn btn-dark mt-5">
-              Order again
-            </Link>
+            {isOwner && <OrderAgainButton order={order} />}
           </div>
         ) : order.status === 'collected' ? (
           <div className="panel p-6">
             <p className="text-xl font-bold">Collected at {fmtTime(order.collected_at)}</p>
             <p className="mt-1 text-ink/70">Thanks for ordering. Enjoy your food.</p>
+            {isOwner && <OrderAgainButton order={order} />}
           </div>
         ) : (
           <div className="panel grid gap-8 p-6 sm:grid-cols-[1fr_auto]">
@@ -119,10 +192,12 @@ export default function OrderTrack() {
           </div>
         )}
 
+        {isOwner && order.status === 'collected' && <RateOrder order={order} onSaved={setOrder} />}
+
         {canCancel && (
           <div className="flex flex-wrap items-center justify-between gap-4 border-y border-line py-4">
             <p className="text-ink/75">
-              Free cancellation until <span className="num font-semibold text-ink">{fmtTime(order.cancel_deadline)}</span> ({timeLeft(order.cancel_deadline, now)})
+              Free cancellation with a full refund until <span className="num font-semibold text-ink">{fmtTime(order.cancel_deadline)}</span> ({timeLeft(order.cancel_deadline, now)})
             </p>
             <button onClick={() => setConfirming(true)} className="btn btn-outline min-h-10">
               Cancel order
@@ -139,21 +214,43 @@ export default function OrderTrack() {
             {order.items.map((i) => (
               <li key={i.id} className="flex items-baseline gap-3 py-3">
                 <span className="num w-8 shrink-0 font-semibold">{i.qty}×</span>
-                <span className="flex-1">{i.name}</span>
+                <span className="flex-1">
+                  {i.name}
+                  {i.detail && <span className="block text-sm text-ink/60">{i.detail}</span>}
+                </span>
                 <span className="num text-ink/70">{money(i.price * i.qty)}</span>
               </li>
             ))}
           </ul>
           {order.note && <p className="mt-3 text-sm text-ink/70">Note: {order.note}</p>}
-          <div className="mt-4 flex items-baseline justify-between">
-            <span className="font-semibold">Total, pay at the counter</span>
+          {order.discount > 0 && (
+            <div className="mt-3 flex items-baseline justify-between text-ink/70">
+              <span>Credit used</span>
+              <span className="num">−{money(order.discount)}</span>
+            </div>
+          )}
+          <div className="mt-3 flex items-baseline justify-between">
+            <span className="font-semibold">Total</span>
             <span className="num text-2xl font-extrabold">{money(order.total)}</span>
           </div>
+          <p className="mt-1 text-right text-sm text-ink/65">
+            {paymentText(order)}
+            {order.payment_ref && order.payment_status !== 'unpaid' && <span className="num">, ref {order.payment_ref}</span>}
+          </p>
+          {order.payment_status === 'paid' && order.total > order.amount_paid && (
+            <p className="mt-1 text-right text-sm font-semibold">Pay the remaining {money(order.total - order.amount_paid)} at the counter.</p>
+          )}
+          {order.payment_status === 'paid' && order.total < order.amount_paid && (
+            <p className="mt-1 text-right text-sm font-semibold">The shop changed your order. Collect {money(order.amount_paid - order.total)} back at the counter.</p>
+          )}
         </section>
       </div>
 
       <Modal open={confirming} onClose={() => setConfirming(false)} title="Cancel this order?">
-        <p className="text-ink/75">The kitchen will be told straight away. You can place a new order any time.</p>
+        <p className="text-ink/75">
+          The kitchen will be told straight away{order.payment_status === 'paid' && order.amount_paid > 0 ? `, and the ${money(order.amount_paid)} you paid will be refunded to your UPI account` : ''}.
+          {order.discount > 0 ? ` Your ${money(order.discount)} credit comes back too.` : ''}
+        </p>
         <div className="mt-6 flex gap-3">
           <button onClick={() => setConfirming(false)} className="btn btn-outline flex-1">
             Keep order

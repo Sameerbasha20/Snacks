@@ -62,7 +62,10 @@ function OrderCard({ order, now, onMove, fresh }) {
           {order.items.map((i) => (
             <li key={i.id} className="flex gap-3">
               <span className="num w-8 shrink-0 font-bold">{i.qty}×</span>
-              <span>{i.name}</span>
+              <span>
+                {i.name}
+                {i.detail && <span className="block text-base text-paper/60">{i.detail}</span>}
+              </span>
             </li>
           ))}
         </ul>

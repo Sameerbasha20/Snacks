@@ -7,12 +7,14 @@ import { ah, requireAuth, requireRole } from '../middleware/auth.js';
 import { notifyReady } from '../push.js';
 import { startOfShopDay } from '../time.js';
 import { HttpError, parseDate, priceItems, replaceOrderItems } from '../orderRules.js';
+import { refundOnCancel, rewardReferrer } from '../rewards.js';
+import { buildReport, reportWorkbook } from '../reports.js';
 
 const router = Router();
 router.use(requireAuth, requireRole('admin'));
 
 const STATUSES = ['placed', 'accepted', 'preparing', 'ready', 'collected', 'cancelled'];
-const EDITABLE = ['pickup_time', 'cancel_deadline', 'note', 'status', 'cancelled_at', 'cancelled_by', 'ready_at', 'collected_at', 'total', 'updated_at'];
+const EDITABLE = ['pickup_time', 'cancel_deadline', 'note', 'status', 'cancelled_at', 'cancelled_by', 'ready_at', 'collected_at', 'total', 'subtotal', 'payment_status', 'updated_at'];
 
 router.get(
   '/orders',
@@ -69,8 +71,12 @@ router.put(
       if (b.items !== undefined) {
         const { lines, total } = await priceItems(b.items, { allowUnavailable: true, client });
         await replaceOrderItems(client, order.id, lines);
-        fields.total = total;
+        // Credit already applied stays applied; any difference from what was paid is settled at the counter.
+        fields.subtotal = total;
+        fields.total = Math.max(0, Math.round((total - (order.discount || 0)) * 100) / 100);
       }
+      if (fields.status === 'cancelled' && order.status !== 'cancelled') Object.assign(fields, await refundOnCancel(client, order));
+      if (fields.status === 'collected' && order.status !== 'collected') await rewardReferrer(client, order);
       const keys = Object.keys(fields).filter((k) => EDITABLE.includes(k));
       await client.query(`UPDATE orders SET ${keys.map((k, i) => `${k} = $${i + 1}`).join(', ')} WHERE id = $${keys.length + 1}`, [
         ...keys.map((k) => fields[k]),
@@ -117,7 +123,7 @@ router.put(
     const t = /^\d{2}:\d{2}$/;
     if (b.open_time && !t.test(b.open_time)) return res.status(400).json({ error: 'Invalid opening time' });
     if (b.close_time && !t.test(b.close_time)) return res.status(400).json({ error: 'Invalid closing time' });
-    for (const k of ['min_lead_minutes', 'default_cancel_before_minutes']) {
+    for (const k of ['min_lead_minutes', 'default_cancel_before_minutes', 'referral_amount']) {
       if (b[k] !== undefined && (!Number.isFinite(Number(b[k])) || Number(b[k]) < 0)) {
         return res.status(400).json({ error: `Invalid ${k.replaceAll('_', ' ')}` });
       }
@@ -172,6 +178,32 @@ router.delete(
     if (u.role === 'user') return res.status(400).json({ error: 'Only staff accounts can be removed here' });
     await q('DELETE FROM users WHERE id = $1', [id]);
     res.json({ ok: true });
+  })
+);
+
+// Sales reports for a range of shop dates (YYYY-MM-DD, inclusive), by pickup time.
+const reportRange = (req) => {
+  const d = /^\d{4}-\d{2}-\d{2}$/;
+  if (!d.test(req.query.from || '') || !d.test(req.query.to || '')) throw new HttpError(400, 'Choose a start and end date');
+  if (req.query.from > req.query.to) throw new HttpError(400, 'The start date is after the end date');
+  return [req.query.from, req.query.to];
+};
+
+router.get(
+  '/reports',
+  ah(async (req, res) => {
+    res.json(await buildReport(...reportRange(req)));
+  })
+);
+
+router.get(
+  '/reports.xlsx',
+  ah(async (req, res) => {
+    const [from, to] = reportRange(req);
+    const wb = await reportWorkbook(await buildReport(from, to, { withOrders: true }));
+    res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.set('Content-Disposition', `attachment; filename="snack-shack-sales-${from}-to-${to}.xlsx"`);
+    res.send(Buffer.from(await wb.xlsx.writeBuffer()));
   })
 );
 

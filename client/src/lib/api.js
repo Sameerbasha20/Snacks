@@ -68,4 +68,22 @@ export const STATUS_META = {
   cancelled: { label: 'Cancelled', short: 'Cancelled', color: 'text-muted line-through' },
 };
 
-export const CATEGORY_LABEL = { snacks: 'Snacks', food: 'Meals', drinks: 'Drinks' };
+export const CATEGORY_LABEL = { combos: 'Combos', snacks: 'Snacks', food: 'Meals', drinks: 'Drinks' };
+export const MENU_ORDER = ['combos', 'snacks', 'food', 'drinks'];
+
+/** How an order was paid, in words a customer understands. */
+export function paymentText(o) {
+  if (o.payment_status === 'refunded') return `Refunded ${money(o.amount_paid)}`;
+  if (o.payment_status === 'paid') return o.amount_paid > 0 ? `Paid ${money(o.amount_paid)} by UPI` : 'Paid with credit';
+  return 'Pay at the counter';
+}
+
+/** Download a file from an authenticated API route. */
+export async function download(path, filename) {
+  const res = await fetch(`/api${path}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Download failed');
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

@@ -189,7 +189,7 @@ function CookedToOrder({ settings }) {
             <dt className="text-paper/60">Free cancellation</dt>
             <dd className="font-semibold">Up to {settings?.default_cancel_before_minutes ?? 30} min before pickup</dd>
             <dt className="text-paper/60">Payment</dt>
-            <dd className="font-semibold">At the counter</dd>
+            <dd className="font-semibold">UPI when you order, refunded if you cancel in time</dd>
           </dl>
         </div>
       </div>

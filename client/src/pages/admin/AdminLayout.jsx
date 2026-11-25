@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 const LINKS = [
   ['/admin', 'Today'],
   ['/admin/orders', 'Orders'],
+  ['/admin/reports', 'Sales reports'],
   ['/admin/menu', 'Menu'],
   ['/admin/settings', 'Opening hours & rules'],
   ['/admin/staff', 'Staff'],

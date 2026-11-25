@@ -1,15 +1,36 @@
 import { Router } from 'express';
 import { one, q } from '../db.js';
 import { ah, requireAuth, requireRole } from '../middleware/auth.js';
+import { comboParts } from '../orderRules.js';
 
 const router = Router();
-const CATEGORIES = ['snacks', 'drinks', 'food'];
+const CATEGORIES = ['combos', 'snacks', 'drinks', 'food'];
 
 router.get(
   '/',
   ah(async (req, res) => {
     const all = req.query.all === '1';
-    res.json(await q(`SELECT * FROM menu_items ${all ? '' : 'WHERE is_available'} ORDER BY category, id`));
+    const rows = await q(
+      `SELECT m.*, r.avg_rating, COALESCE(r.rating_count, 0) AS rating_count
+       FROM menu_items m
+       LEFT JOIN (SELECT menu_item_id, ROUND(AVG(stars)::numeric, 1)::float AS avg_rating, COUNT(*) AS rating_count
+                  FROM ratings GROUP BY menu_item_id) r ON r.menu_item_id = m.id
+       ${all ? '' : 'WHERE m.is_available'} ORDER BY m.category, m.id`
+    );
+    const parts = await comboParts(rows);
+    const out = [];
+    for (const row of rows) {
+      const combo = parts.get(row.id);
+      if (combo) {
+        row.combo = combo.map(({ menu_item_id, name, qty }) => ({ menu_item_id, name, qty }));
+        row.regular_price = combo.reduce((s, p) => s + p.price * p.qty, 0);
+        row.components_available = combo.every((p) => p.is_available);
+        // Customers don't see a combo while one of its parts is sold out.
+        if (!all && !row.components_available) continue;
+      }
+      out.push(row);
+    }
+    res.json(out);
   })
 );
 
@@ -23,14 +44,24 @@ function readItem(body, existing = {}) {
     description: String(body.description ?? existing.description ?? '').trim(),
     is_available: Boolean(body.is_available ?? existing.is_available ?? true),
     prep_minutes: Math.max(1, Math.floor(Number(body.prep_minutes ?? existing.prep_minutes ?? 15))),
+    combo_items: null,
   };
+  if (item.category === 'combos') {
+    const raw = body.combo_items ?? body.combo ?? existing.combo_items;
+    const list = (typeof raw === 'string' ? JSON.parse(raw || '[]') : raw || [])
+      .map((p) => ({ menu_item_id: Math.floor(Number(p.menu_item_id)), qty: Math.floor(Number(p.qty)) || 1 }))
+      .filter((p) => p.menu_item_id > 0 && p.qty > 0 && p.qty <= 20);
+    if (list.length < 2 && list.reduce((s, p) => s + p.qty, 0) < 2) throw new Error('A combo needs at least two items');
+    if (existing.id && list.some((p) => p.menu_item_id === existing.id)) throw new Error("A combo can't include itself");
+    item.combo_items = JSON.stringify(list);
+  }
   if (!item.name) throw new Error('Name is required');
-  if (!CATEGORIES.includes(item.category)) throw new Error('Section must be snacks, meals or drinks');
+  if (!CATEGORIES.includes(item.category)) throw new Error('Section must be combos, snacks, meals or drinks');
   if (!Number.isFinite(item.price) || item.price < 0) throw new Error('Price must be a positive number');
   return item;
 }
 
-const FIELDS = ['name', 'category', 'price', 'emoji', 'image_url', 'description', 'is_available', 'prep_minutes'];
+const FIELDS = ['name', 'category', 'price', 'emoji', 'image_url', 'description', 'is_available', 'prep_minutes', 'combo_items'];
 
 router.post(
   '/',

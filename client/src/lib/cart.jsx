@@ -23,8 +23,15 @@ export function CartProvider({ children }) {
     });
   }, []);
 
-  const setQty = useCallback((id, qty) => {
-    setItems((prev) => (qty <= 0 ? prev.filter((p) => p.id !== id) : prev.map((p) => (p.id === id ? { ...p, qty } : p))));
+  /** Set a line's quantity. Pass `item` to add it when it isn't in the cart yet (used by "Order again"). */
+  const setQty = useCallback((id, qty, item) => {
+    setItems((prev) => {
+      if (qty <= 0) return prev.filter((p) => p.id !== id);
+      if (!prev.some((p) => p.id === id)) {
+        return item ? [...prev, { id: item.id, name: item.name, price: item.price, image_url: item.image_url, emoji: item.emoji, qty }] : prev;
+      }
+      return prev.map((p) => (p.id === id ? { ...p, qty } : p));
+    });
   }, []);
 
   const clear = useCallback(() => setItems([]), []);

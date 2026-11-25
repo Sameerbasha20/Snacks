@@ -13,6 +13,8 @@ import Menu from './pages/Menu';
 import Checkout from './pages/Checkout';
 import MyOrders from './pages/MyOrders';
 import OrderTrack from './pages/OrderTrack';
+import Rewards from './pages/Rewards';
+import Reports from './pages/admin/Reports';
 import KitchenBoard from './pages/kitchen/KitchenBoard';
 import AdminLayout from './pages/admin/AdminLayout';
 import Dashboard from './pages/admin/Dashboard';
@@ -44,11 +46,13 @@ export default function App() {
           <Route path="/menu" element={<Protected roles={['user']}><Page><Menu /></Page></Protected>} />
           <Route path="/checkout" element={<Protected roles={['user']}><Page><Checkout /></Page></Protected>} />
           <Route path="/orders" element={<Protected roles={['user']}><Page><MyOrders /></Page></Protected>} />
+          <Route path="/rewards" element={<Protected roles={['user']}><Page><Rewards /></Page></Protected>} />
           <Route path="/orders/:id" element={<Protected><Page><OrderTrack /></Page></Protected>} />
           <Route path="/kitchen" element={<Protected roles={['kitchen', 'admin']}><Page><KitchenBoard /></Page></Protected>} />
           <Route path="/admin" element={<Protected roles={['admin']}><Page><AdminLayout /></Page></Protected>}>
             <Route index element={<Dashboard />} />
             <Route path="orders" element={<AdminOrders />} />
+            <Route path="reports" element={<Reports />} />
             <Route path="menu" element={<MenuManager />} />
             <Route path="settings" element={<Settings />} />
             <Route path="staff" element={<Staff />} />

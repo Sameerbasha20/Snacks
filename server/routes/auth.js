@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import { nowIso, one } from '../db.js';
+import { getSettings, makeReferralCode, nowIso, one, tx } from '../db.js';
+import { addCredit } from '../rewards.js';
 import { ah, requireAuth, signToken } from '../middleware/auth.js';
 
 const router = Router();
@@ -20,10 +21,23 @@ router.post(
     if (await one('SELECT 1 FROM users WHERE email = $1', [email])) {
       return res.status(409).json({ error: 'An account with this email already exists. Try logging in.' });
     }
-    const row = await one(
-      "INSERT INTO users (name, email, phone, password_hash, role, created_at) VALUES ($1, $2, $3, $4, 'user', $5) RETURNING id",
-      [name, email, phone, bcrypt.hashSync(password, 10), nowIso()]
-    );
+    // Optional referral code from a friend: the new customer gets welcome credit straight away.
+    const refCode = String(req.body.referral_code || '').trim().toUpperCase();
+    let referrer = null;
+    if (refCode) {
+      referrer = await one("SELECT id, name FROM users WHERE referral_code = $1 AND role = 'user'", [refCode]);
+      if (!referrer) return res.status(400).json({ error: "That referral code doesn't exist. Check it or leave it empty." });
+    }
+    const { referral_amount } = await getSettings();
+    const row = await tx(async (client) => {
+      const r = await one(
+        "INSERT INTO users (name, email, phone, password_hash, role, created_at, referral_code, referred_by) VALUES ($1, $2, $3, $4, 'user', $5, $6, $7) RETURNING id",
+        [name, email, phone, bcrypt.hashSync(password, 10), nowIso(), await makeReferralCode(name, client), referrer?.id ?? null],
+        client
+      );
+      if (referrer) await addCredit(client, r.id, referral_amount, `Welcome credit from ${referrer.name.split(' ')[0]}'s referral`);
+      return r;
+    });
     // No token here: new customers log in themselves after creating an account.
     res.status(201).json({ user: { id: row.id, name, email, phone, role: 'user' } });
   })

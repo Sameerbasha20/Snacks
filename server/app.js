@@ -7,6 +7,7 @@ import orderRoutes from './routes/orders.js';
 import adminRoutes from './routes/admin.js';
 import pushRoutes from './routes/push.js';
 import eventRoutes from './routes/events.js';
+import meRoutes from './routes/me.js';
 
 /** The API, shared by local `node server/index.js` and the Vercel function in api/index.js. */
 const app = express();
@@ -27,6 +28,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/events', eventRoutes);
+app.use('/api/me', meRoutes);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
 // eslint-disable-next-line no-unused-vars

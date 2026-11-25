@@ -1,0 +1,22 @@
+{
+  "name": "Snack Shack",
+  "short_name": "Snack Shack",
+  "description": "Order snacks, chai and meals ahead and collect them hot from the counter.",
+  "id": "/",
+  "start_url": "/menu?source=homescreen",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5F1EA",
+  "theme_color": "#1C1A17",
+  "categories": ["food", "shopping"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Menu", "url": "/menu", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "My orders", "url": "/orders", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

@@ -45,23 +45,57 @@ export async function priceItems(items, { allowUnavailable = false, client } = {
   }
   const rows = await q('SELECT * FROM menu_items WHERE id = ANY($1::int[])', [[...merged.keys()]], client);
   const byId = new Map(rows.map((r) => [r.id, r]));
+  const parts = await comboParts(rows, client);
   const lines = [];
   for (const [id, qty] of merged) {
     const m = byId.get(id);
     if (!m) throw new HttpError(400, 'An item in your cart is no longer on the menu');
-    if (!m.is_available && !allowUnavailable) throw new HttpError(400, `${m.name} is sold out right now`);
-    lines.push({ menu_item_id: m.id, name: m.name, emoji: m.emoji, price: m.price, qty });
+    const combo = parts.get(m.id);
+    const soldOut = !m.is_available || combo?.some((p) => !p.is_available);
+    if (soldOut && !allowUnavailable) throw new HttpError(400, `${m.name} is sold out right now`);
+    const detail = combo ? combo.map((p) => `${p.qty}× ${p.name}`).join(', ') : null;
+    lines.push({ menu_item_id: m.id, name: m.name, detail, emoji: m.emoji, price: m.price, qty });
   }
   const total = Math.round(lines.reduce((s, l) => s + l.price * l.qty, 0) * 100) / 100;
   return { lines, total };
+}
+
+/** For combo rows, look up their component items. Returns Map(comboId -> [{menu_item_id, name, price, qty, is_available}]). */
+export async function comboParts(rows, client) {
+  const combos = rows.filter((r) => r.category === 'combos' && r.combo_items);
+  const out = new Map();
+  if (!combos.length) return out;
+  const specs = new Map(combos.map((c) => [c.id, safeParse(c.combo_items)]));
+  const ids = [...new Set([...specs.values()].flat().map((p) => Number(p.menu_item_id)))];
+  const items = new Map((await q('SELECT id, name, price, is_available FROM menu_items WHERE id = ANY($1::int[])', [ids], client)).map((r) => [r.id, r]));
+  for (const [comboId, spec] of specs) {
+    out.set(
+      comboId,
+      spec.map((p) => {
+        const it = items.get(Number(p.menu_item_id));
+        // A deleted component makes the combo unorderable.
+        return { menu_item_id: Number(p.menu_item_id), qty: p.qty, name: it?.name ?? 'Removed item', price: it?.price ?? 0, is_available: !!it?.is_available };
+      })
+    );
+  }
+  return out;
+}
+
+function safeParse(json) {
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function replaceOrderItems(client, orderId, lines) {
   await client.query('DELETE FROM order_items WHERE order_id = $1', [orderId]);
   for (const l of lines) {
     await client.query(
-      'INSERT INTO order_items (order_id, menu_item_id, name_snapshot, emoji_snapshot, price_snapshot, qty) VALUES ($1, $2, $3, $4, $5, $6)',
-      [orderId, l.menu_item_id, l.name, l.emoji, l.price, l.qty]
+      'INSERT INTO order_items (order_id, menu_item_id, name_snapshot, detail_snapshot, emoji_snapshot, price_snapshot, qty) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [orderId, l.menu_item_id, l.name, l.detail ?? null, l.emoji, l.price, l.qty]
     );
   }
 }

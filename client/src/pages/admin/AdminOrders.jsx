@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { api, fmtWhen, money, STATUS_META, toLocalInput } from '../../lib/api';
+import { api, fmtWhen, money, STATUS_META, toLocalInput, paymentText } from '../../lib/api';
 import { useSocketEvent } from '../../lib/socket';
 import Modal from '../../components/Modal';
 import { QtyStepper } from '../../components/CartDrawer';
@@ -98,7 +98,21 @@ function EditOrder({ order, onClose, onSaved }) {
             Add
           </button>
         </div>
-        <p className="num mt-3 text-right font-semibold">New total {money(total)}</p>
+        {(() => {
+          const newTotal = Math.max(0, total - (order.discount || 0));
+          const diff = order.payment_status === 'paid' ? newTotal - order.amount_paid : 0;
+          return (
+            <div className="num mt-3 text-right">
+              {order.discount > 0 && <p className="text-sm text-ink/65">Customer credit applied: −{money(order.discount)}</p>}
+              <p className="font-semibold">New total {money(newTotal)}</p>
+              <p className="text-sm text-ink/65">
+                {paymentText(order)}
+                {diff > 0 && <>. Collect {money(diff)} more at the counter.</>}
+                {diff < 0 && <>. Give back {money(-diff)} at the counter.</>}
+              </p>
+            </div>
+          );
+        })()}
       </section>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -223,7 +237,10 @@ export default function AdminOrders() {
                     <p className="num">{fmtWhen(o.pickup_time)}</p>
                     <p className="num text-ink/60">Cancel by {fmtWhen(o.cancel_deadline).split(' at ')[1]}</p>
                   </td>
-                  <td className="num py-3.5 pr-4">{money(o.total)}</td>
+                  <td className="num py-3.5 pr-4">
+                    {money(o.total)}
+                    <p className="text-sm whitespace-nowrap text-ink/60">{o.payment_status === 'paid' ? 'Paid online' : o.payment_status === 'refunded' ? 'Refunded' : 'At counter'}</p>
+                  </td>
                   <td className="py-3.5 pr-4">
                     <StatusBadge meta={STATUS_META[o.status]} />
                   </td>

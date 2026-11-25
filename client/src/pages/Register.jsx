@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import AuthShell, { Field, FormError, Spinner } from '../components/AuthShell';
 import { homeFor, useAuth } from '../lib/auth';
 
@@ -7,7 +7,9 @@ export default function Register() {
   const { user, register } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [form, setForm] = useState({ name: '', phone: '', email: '', password: '' });
+  const [params] = useSearchParams();
+  const fromLink = (params.get('ref') || '').toUpperCase();
+  const [form, setForm] = useState({ name: '', phone: '', email: '', password: '', referral_code: fromLink });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [shake, setShake] = useState(0);
@@ -38,6 +40,13 @@ export default function Register() {
         <Field label="Phone" type="tel" autoComplete="tel" required value={form.phone} onChange={set('phone')} hint="Only used if we need to reach you about an order." />
         <Field label="Email" type="email" autoComplete="email" required value={form.email} onChange={set('email')} />
         <Field label="Password" type="password" autoComplete="new-password" required minLength={6} value={form.password} onChange={set('password')} hint="At least 6 characters." />
+        <Field
+          label="Friend's referral code (optional)"
+          autoComplete="off"
+          value={form.referral_code}
+          onChange={(e) => setForm({ ...form, referral_code: e.target.value.toUpperCase() })}
+          hint={fromLink ? 'Added from your friend’s link. You get credit off your first order.' : 'Got a code from a friend? Add it for credit off your first order.'}
+        />
         <FormError>{error}</FormError>
         <button disabled={busy} className="btn btn-dark w-full">
           {busy ? <Spinner /> : 'Create account'}
