@@ -1,6 +1,6 @@
 # Snack Shack: pre-order website
 
-Customers scan a QR code at the counter, register, and order snacks, drinks and meals at least an hour ahead.
+Customers scan a QR code at the counter, register, and order biryani, burgers, sandwiches, pizza, home-made meals, snacks and drinks at least an hour ahead.
 Orders appear on the kitchen screen; when the kitchen marks one ready, the customer is alerted to collect it.
 
 ## Roles

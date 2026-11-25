@@ -68,8 +68,16 @@ export const STATUS_META = {
   cancelled: { label: 'Cancelled', short: 'Cancelled', color: 'text-muted line-through' },
 };
 
-export const CATEGORY_LABEL = { combos: 'Combos', snacks: 'Snacks', food: 'Meals', drinks: 'Drinks' };
-export const MENU_ORDER = ['combos', 'snacks', 'food', 'drinks'];
+export const CATEGORY_LABEL = {
+  combos: 'Combos',
+  burgers: 'Burgers, sandwiches & pizza',
+  biryani: 'Biryani',
+  homemade: 'Home-made meals',
+  snacks: 'Snacks & puffs',
+  food: 'Rice & noodles',
+  drinks: 'Drinks',
+};
+export const MENU_ORDER = ['combos', 'burgers', 'biryani', 'homemade', 'snacks', 'food', 'drinks'];
 
 /** How an order was paid, in words a customer understands. */
 export function paymentText(o) {

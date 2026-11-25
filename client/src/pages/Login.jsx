@@ -13,7 +13,9 @@ export default function Login() {
   const [error, setError] = useState('');
   const [shake, setShake] = useState(0);
 
-  if (user) return <Navigate to={homeFor(user)} replace />;
+  // Also runs the moment login succeeds, so it must honour where the customer was heading.
+  const from = location.state?.from;
+  if (user) return <Navigate to={user.role === 'user' && from ? from : homeFor(user)} replace />;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -21,7 +23,6 @@ export default function Login() {
     setError('');
     try {
       const u = await login(form.email, form.password);
-      const from = location.state?.from;
       navigate(u.role === 'user' && from ? from : homeFor(u), { replace: true });
     } catch (err) {
       setError(err.message);

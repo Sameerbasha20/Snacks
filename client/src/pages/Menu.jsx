@@ -146,6 +146,27 @@ export default function Menu() {
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 128, behavior: 'smooth' });
   };
 
+  // Arriving from a link like /menu#biryani: go straight to that section once it has loaded.
+  const jumped = useRef(false);
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (jumped.current || !id || !groups.some((g) => g.id === id)) return;
+    jumped.current = true;
+    // Bars above the menu (last order, install tip) load a moment later and push it down,
+    // so line it up again until they settle, unless the customer has started scrolling.
+    let expected = null;
+    const align = () => {
+      if (expected !== null && Math.abs(window.scrollY - expected) > 4) return;
+      const el = sectionRefs.current[id];
+      if (!el) return;
+      expected = Math.max(0, el.getBoundingClientRect().top + window.scrollY - 128);
+      window.scrollTo({ top: expected });
+      setActive(id);
+    };
+    // Not cleared when groups update (favourites arriving), or the later passes would be lost.
+    [0, 400, 900, 1600].forEach((ms) => setTimeout(align, ms));
+  }, [groups]);
+
   return (
     <div className="mx-auto max-w-6xl px-4 pt-8 pb-40 sm:px-6 lg:pb-16">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">

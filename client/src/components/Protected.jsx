@@ -11,7 +11,7 @@ export default function Protected({ roles, children }) {
       </div>
     );
   }
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }} />;
   if (roles && !roles.includes(user.role)) return <Navigate to={homeFor(user)} replace />;
   return children;
 }

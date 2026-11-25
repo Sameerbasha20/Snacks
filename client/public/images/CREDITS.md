@@ -22,3 +22,13 @@ of your own food from Admin > Menu when you have them.
 | mango-lassi.jpg | https://unsplash.com/photos/KlVIYmGVRQ8 (Julia Zyablova) |
 | choc-shake.jpg | https://unsplash.com/photos/5kw_1amI7OU (Ali Choubin) |
 | kitchen.jpg | https://unsplash.com/photos/H5pw3LutKSc |
+| biryani-plate.jpg | https://unsplash.com/photos/0j4bisyPo3M |
+| chicken-biryani.jpg | https://unsplash.com/photos/ysmeQt1dzcw |
+| veg-biryani.jpg | https://unsplash.com/photos/o5XB6XwTb1I |
+| egg-puff.jpg | https://unsplash.com/photos/6yOQrk_TO-o |
+| corn-sandwich.jpg | https://unsplash.com/photos/BiWb1Y8wpZk (Pixzolo Photography) |
+| veg-sandwich.jpg | https://unsplash.com/photos/mAQZ3X_8_l0 |
+| home-thali.jpg | https://unsplash.com/photos/bKmSUcAGrvI (fuseviews) |
+| meals-thali.jpg | https://unsplash.com/photos/adzbTddUg68 (Zoshua Colah) |
+| paneer-masala.jpg | https://unsplash.com/photos/vgTntT8PmIM |
+| chicken-curry.jpg | https://unsplash.com/photos/gwUA_pHaOYY (Imad 786) |

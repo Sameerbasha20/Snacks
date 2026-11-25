@@ -2,7 +2,7 @@ import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import { randomInt } from 'node:crypto';
 import { config } from './config.js';
-import { ADMIN_SEED, MENU_SEED } from './seedData.js';
+import { ADMIN_SEED, COMBO_SEED_V2, MENU_SEED, MENU_SEED_V2, MOVE_TO_BURGERS } from './seedData.js';
 
 // COUNT(*) etc. come back as bigint strings; our numbers are small, so parse them.
 pg.types.setTypeParser(20, (v) => Number(v));
@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 const MIGRATIONS = `
 ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS combo_items TEXT;
 ALTER TABLE menu_items DROP CONSTRAINT IF EXISTS menu_items_category_check;
-ALTER TABLE menu_items ADD CONSTRAINT menu_items_category_check CHECK (category IN ('combos','snacks','drinks','food'));
+ALTER TABLE menu_items ADD CONSTRAINT menu_items_category_check CHECK (category IN ('combos','snacks','burgers','biryani','homemade','drinks','food'));
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS subtotal DOUBLE PRECISION;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid';
@@ -198,6 +198,7 @@ export function ensureDb() {
       await pool.query('UPDATE users SET referral_code = $1 WHERE id = $2', [await makeReferralCode(u.name), u.id]);
     }
     await seedCombos();
+    await seedMenuV2();
   })().catch((e) => {
     ready = null; // let the next request retry
     throw e;
@@ -218,6 +219,33 @@ async function seedCombos() {
     );
   }
   await pool.query("INSERT INTO settings (key, value) VALUES ('seeded_combos', '1') ON CONFLICT (key) DO NOTHING");
+}
+
+/**
+ * Biryani, home-made meals, sandwiches and puffs, added once.
+ * Moves burgers and pizza into their own section, and skips any dish name that already exists.
+ */
+async function seedMenuV2() {
+  if (await one("SELECT 1 FROM settings WHERE key = 'seeded_menu_v2'")) return;
+  await pool.query("UPDATE menu_items SET category = 'burgers' WHERE category = 'food' AND name = ANY($1)", [MOVE_TO_BURGERS]);
+  const have = new Set((await q('SELECT name FROM menu_items')).map((r) => r.name));
+  for (const [name, category, price, emoji, description, prep, image] of MENU_SEED_V2) {
+    if (have.has(name)) continue;
+    await pool.query(
+      'INSERT INTO menu_items (name, category, price, emoji, description, prep_minutes, image_url) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [name, category, price, emoji, description, prep, image]
+    );
+  }
+  const ids = Object.fromEntries((await q('SELECT id, name FROM menu_items')).map((r) => [r.name, r.id]));
+  for (const [name, price, description, image, parts] of COMBO_SEED_V2) {
+    if (ids[name] || !parts.every(([n]) => ids[n])) continue;
+    const combo = JSON.stringify(parts.map(([n, qty]) => ({ menu_item_id: ids[n], qty })));
+    await pool.query(
+      "INSERT INTO menu_items (name, category, price, description, prep_minutes, image_url, combo_items) VALUES ($1, 'combos', $2, $3, 20, $4, $5)",
+      [name, price, description, image, combo]
+    );
+  }
+  await pool.query("INSERT INTO settings (key, value) VALUES ('seeded_menu_v2', '1') ON CONFLICT (key) DO NOTHING");
 }
 
 const COMBO_SEED = [

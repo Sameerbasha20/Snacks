@@ -4,7 +4,7 @@ import { ah, requireAuth, requireRole } from '../middleware/auth.js';
 import { comboParts } from '../orderRules.js';
 
 const router = Router();
-const CATEGORIES = ['combos', 'snacks', 'drinks', 'food'];
+const CATEGORIES = ['combos', 'snacks', 'burgers', 'biryani', 'homemade', 'food', 'drinks'];
 
 router.get(
   '/',
@@ -56,7 +56,7 @@ function readItem(body, existing = {}) {
     item.combo_items = JSON.stringify(list);
   }
   if (!item.name) throw new Error('Name is required');
-  if (!CATEGORIES.includes(item.category)) throw new Error('Section must be combos, snacks, meals or drinks');
+  if (!CATEGORIES.includes(item.category)) throw new Error('Pick a menu section for this dish');
   if (!Number.isFinite(item.price) || item.price < 0) throw new Error('Price must be a positive number');
   return item;
 }
