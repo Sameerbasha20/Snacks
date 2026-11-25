@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import toast from 'react-hot-toast';
-import { api, fmtDay, fmtTime, relative } from '../../lib/api';
+import { api, fmtDay, fmtTime, money, PAYMENT_PENDING, relative } from '../../lib/api';
 import { useSocketEvent } from '../../lib/socket';
 import { chime } from '../../lib/notify';
 import { useNow } from '../../components/CancelCountdown';
@@ -24,7 +24,8 @@ const ACTIONS = {
   ready: [{ to: 'collected', label: 'Collected', cls: 'border-[1.5px] border-paper/40 text-paper hover:border-paper' }],
 };
 
-function OrderCard({ order, now, onMove, fresh }) {
+function OrderCard({ order, now, onMove, onPayment, fresh }) {
+  const unpaid = order.status !== 'cancelled' && PAYMENT_PENDING.includes(order.payment_status);
   const minsLeft = (new Date(order.pickup_time).getTime() - now) / 60000;
   const waiting = order.status !== 'ready';
   const late = waiting && minsLeft < 0;
@@ -71,8 +72,31 @@ function OrderCard({ order, now, onMove, fresh }) {
         </ul>
         {order.note && <p className="mt-3 rounded-md bg-paper/10 px-3 py-2 text-sm">Note: {order.note}</p>}
 
+        {unpaid ? (
+          <div className="mt-4 rounded-md border border-saffron/60 p-3">
+            {order.payment_status === 'verifying' ? (
+              <p>
+                Customer paid <span className="num font-bold">{money(order.total)}</span>, UTR{' '}
+                <span className="num font-bold tracking-wide">{order.payment_ref?.replace(/(\d{4})(?=\d)/g, '$1 ')}</span>. Check your UPI app.
+              </p>
+            ) : (
+              <p>
+                Waiting for UPI payment of <span className="num font-bold">{money(order.total)}</span>.
+              </p>
+            )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={() => onPayment(order, 'confirm')} className="btn min-h-12 flex-[2_1_8rem] bg-paper text-base text-ink hover:bg-white">
+                Payment received
+              </button>
+              <button onClick={() => onPayment(order, 'reject')} className="btn min-h-12 flex-[1_1_7rem] border-[1.5px] border-paper/40 text-base text-paper hover:border-paper">
+                Not received
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-4 flex gap-2">
-          {ACTIONS[order.status]?.map((a) => (
+          {!unpaid && ACTIONS[order.status]?.map((a) => (
             <button key={a.to} onClick={() => onMove(order, a.to)} className={`btn min-h-12 flex-1 text-base ${a.cls}`}>
               {a.label}
             </button>
@@ -116,9 +140,29 @@ export default function KitchenBoard() {
     toast(`New order ${o.id} from ${o.customer_name}`);
   });
   useSocketEvent('order:updated', (o) => {
+    const before = orders?.find((p) => p.id === o.id);
     upsert(o);
-    if (o.status === 'cancelled') toast(`Order ${o.id} was cancelled`);
+    if (o.status === 'cancelled' && before?.status !== 'cancelled') toast(`Order ${o.id} was cancelled`);
+    if (o.payment_status === 'verifying' && before?.payment_status !== 'verifying') {
+      chime('new');
+      toast(`Order ${o.id}: customer says they paid. Check the UTR.`);
+    }
   });
+
+  const payment = async (order, action) => {
+    if (
+      action === 'reject' &&
+      !window.confirm(`Cancel order ${order.id}? Only do this if ${money(order.total)} hasn't arrived in your UPI app. The customer will be told.`)
+    ) {
+      return;
+    }
+    try {
+      upsert(await api(`/orders/${order.id}/payment`, { method: 'POST', body: { action } }));
+      toast.success(action === 'confirm' ? `Order ${order.id} is paid. You can start cooking.` : `Order ${order.id} cancelled`);
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
 
   const move = async (order, to) => {
     upsert({ ...order, status: to }); // optimistic, so the card moves immediately
@@ -162,7 +206,7 @@ export default function KitchenBoard() {
                     <div className="space-y-3">
                       <AnimatePresence mode="popLayout">
                         {list.map((o) => (
-                          <OrderCard key={o.id} order={o} now={now} onMove={move} fresh={fresh.has(o.id)} />
+                          <OrderCard key={o.id} order={o} now={now} onMove={move} onPayment={payment} fresh={fresh.has(o.id)} />
                         ))}
                       </AnimatePresence>
                       {list.length === 0 && <p className="py-8 text-center text-sm text-paper/40">{col.empty}</p>}

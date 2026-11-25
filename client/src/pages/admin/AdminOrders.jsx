@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { api, fmtWhen, money, STATUS_META, toLocalInput, paymentText } from '../../lib/api';
+import { api, fmtWhen, money, PAYMENT_PENDING, STATUS_META, toLocalInput, paymentText } from '../../lib/api';
 import { useSocketEvent } from '../../lib/socket';
 import Modal from '../../components/Modal';
 import { QtyStepper } from '../../components/CartDrawer';
@@ -8,6 +8,78 @@ import { StatusBadge } from '../../components/Brand';
 import Icon from '../../components/Icon';
 
 const FILTERS = ['all', 'placed', 'accepted', 'preparing', 'ready', 'collected', 'cancelled'];
+
+const PAY_SHORT = {
+  awaiting: 'Not paid yet',
+  verifying: 'Check UTR',
+  paid: 'Paid',
+  refund_due: 'Refund due',
+  refunded: 'Refunded',
+  failed: 'Not received',
+  void: 'Not paid',
+};
+// Payment states where someone at the shop has to do something.
+const NEEDS_ACTION = ['verifying', 'refund_due'];
+
+/** Confirm a UPI payment, cancel for non-payment, or record that a refund was sent. */
+function PaymentActions({ order, onSaved }) {
+  const [busy, setBusy] = useState(false);
+  const run = async (fn, done) => {
+    setBusy(true);
+    try {
+      onSaved(await fn());
+      toast.success(done);
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const pay = (action) => api(`/orders/${order.id}/payment`, { method: 'POST', body: { action } });
+
+  if (order.status !== 'cancelled' && PAYMENT_PENDING.includes(order.payment_status)) {
+    return (
+      <div className="rounded-lg border border-saffron p-4">
+        <p className="font-semibold">
+          {order.payment_status === 'verifying'
+            ? `Customer says they paid ${money(order.total)}. UTR ${order.payment_ref}`
+            : `Waiting for ${money(order.total)} by UPI`}
+        </p>
+        <p className="text-sm text-ink/65">Check your UPI app. The kitchen can't start until you confirm.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button disabled={busy} onClick={() => run(() => pay('confirm'), `Order ${order.id} marked paid`)} className="btn btn-dark">
+            Payment received
+          </button>
+          <button
+            disabled={busy}
+            onClick={() => window.confirm(`Cancel order ${order.id} because the money never arrived?`) && run(() => pay('reject'), `Order ${order.id} cancelled`)}
+            className="btn btn-outline"
+          >
+            Not received, cancel order
+          </button>
+        </div>
+      </div>
+    );
+  }
+  if (order.payment_status === 'refund_due') {
+    return (
+      <div className="rounded-lg border border-saffron p-4">
+        <p className="font-semibold">Send {money(order.amount_paid || order.total)} back to the customer</p>
+        <p className="text-sm text-ink/65">
+          Refund it from your UPI app{order.payment_ref ? ` (their payment UTR was ${order.payment_ref})` : ''}, then record it here.
+        </p>
+        <button
+          disabled={busy}
+          onClick={() => run(() => api(`/admin/orders/${order.id}`, { method: 'PUT', body: { refund_sent: true } }), 'Refund recorded')}
+          className="btn btn-dark mt-3"
+        >
+          I've sent the refund
+        </button>
+      </div>
+    );
+  }
+  return null;
+}
 
 function EditOrder({ order, onClose, onSaved }) {
   const [menu, setMenu] = useState([]);
@@ -68,6 +140,13 @@ function EditOrder({ order, onClose, onSaved }) {
       <p className="text-ink/70">
         {order.customer_name}, {order.customer_phone || 'no phone'}, {order.customer_email}
       </p>
+      <PaymentActions
+        order={order}
+        onSaved={(o) => {
+          onSaved(o);
+          onClose();
+        }}
+      />
 
       <section>
         <h3 className="label">Items</h3>
@@ -239,7 +318,9 @@ export default function AdminOrders() {
                   </td>
                   <td className="num py-3.5 pr-4">
                     {money(o.total)}
-                    <p className="text-sm whitespace-nowrap text-ink/60">{o.payment_status === 'paid' ? 'Paid online' : o.payment_status === 'refunded' ? 'Refunded' : 'At counter'}</p>
+                    <p className={`text-sm whitespace-nowrap ${NEEDS_ACTION.includes(o.payment_status) ? 'font-semibold text-saffron-deep' : 'text-ink/60'}`}>
+                      {PAY_SHORT[o.payment_status] ?? 'At counter'}
+                    </p>
                   </td>
                   <td className="py-3.5 pr-4">
                     <StatusBadge meta={STATUS_META[o.status]} />

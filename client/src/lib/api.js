@@ -81,10 +81,29 @@ export const MENU_ORDER = ['combos', 'burgers', 'biryani', 'homemade', 'snacks',
 
 /** How an order was paid, in words a customer understands. */
 export function paymentText(o) {
-  if (o.payment_status === 'refunded') return `Refunded ${money(o.amount_paid)}`;
-  if (o.payment_status === 'paid') return o.amount_paid > 0 ? `Paid ${money(o.amount_paid)} by UPI` : 'Paid with credit';
-  return 'Pay at the counter';
+  const amt = money(o.amount_paid > 0 ? o.amount_paid : o.total);
+  switch (o.payment_status) {
+    case 'awaiting':
+      return `Waiting for UPI payment of ${money(o.total)}`;
+    case 'verifying':
+      return `Paid ${money(o.total)} by UPI, checking it arrived`;
+    case 'paid':
+      return o.payment_method === 'credit' ? 'Paid with credit' : `Paid ${amt} by UPI`;
+    case 'refund_due':
+      return `Refund of ${amt} on its way`;
+    case 'refunded':
+      return `Refunded ${amt}`;
+    case 'failed':
+      return 'Payment not received';
+    case 'void':
+      return 'Not paid';
+    default:
+      return 'Pay at the counter';
+  }
 }
+
+/** Payment states where the customer still has to pay or staff still have to check. */
+export const PAYMENT_PENDING = ['awaiting', 'verifying'];
 
 /** Download a file from an authenticated API route. */
 export async function download(path, filename) {

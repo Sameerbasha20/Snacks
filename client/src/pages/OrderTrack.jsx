@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
-import { api, fmtTime, fmtWhen, money, paymentText, relative, STATUS_META } from '../lib/api';
+import { api, fmtTime, fmtWhen, money, PAYMENT_PENDING, paymentText, relative, STATUS_META } from '../lib/api';
+import PayByUpi from '../components/PayByUpi';
 import { useCart } from '../lib/cart';
 import { reorder } from '../lib/customer';
 import { StarInput } from '../components/Stars';
@@ -113,7 +114,11 @@ export default function OrderTrack() {
   }, [id]);
 
   const onUpdate = (o) => {
-    if (String(o.id) === String(id)) setOrder(o);
+    if (String(o.id) !== String(id)) return;
+    if (o.payment_status === 'paid' && order && PAYMENT_PENDING.includes(order.payment_status)) {
+      toast.success('Payment confirmed. The kitchen has your order.');
+    }
+    setOrder(o);
   };
   useSocketEvent('order:updated', onUpdate);
   useSocketEvent('order:ready', onUpdate);
@@ -155,19 +160,28 @@ export default function OrderTrack() {
       </div>
       {state?.justPlaced && order.status === 'placed' && (
         <motion.p initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="mt-3 text-ink/75">
-          Order placed. The kitchen has it, and this page updates on its own.
+          {PAYMENT_PENDING.includes(order.payment_status)
+            ? 'Order saved. Pay below and the kitchen will start on it.'
+            : 'Order placed. The kitchen has it, and this page updates on its own.'}
         </motion.p>
       )}
 
       <div className="mt-8 space-y-6">
         <AnimatePresence>{order.status === 'ready' && <ReadyPanel order={order} />}</AnimatePresence>
 
+        {isOwner && order.status !== 'cancelled' && PAYMENT_PENDING.includes(order.payment_status) && <PayByUpi order={order} onUpdated={setOrder} />}
+
         {order.status === 'cancelled' ? (
           <div className="panel p-6">
             <p className="text-xl font-bold">This order was cancelled</p>
             <p className="mt-1 text-ink/70">
-              {order.cancelled_by === 'admin' ? 'The shop cancelled it.' : 'You cancelled it.'}{' '}
-              {order.payment_status === 'refunded' ? `${money(order.amount_paid)} goes back to your UPI account within 5–7 working days.` : ''}
+              {order.payment_status === 'failed'
+                ? "The shop couldn't find your UPI payment, so the order was cancelled. If money did leave your account, show the UTR at the counter."
+                : order.cancelled_by === 'customer'
+                  ? 'You cancelled it.'
+                  : 'The shop cancelled it.'}{' '}
+              {order.payment_status === 'refund_due' ? `The shop will send ${money(order.amount_paid || order.total)} back to the UPI account you paid from.` : ''}
+              {order.payment_status === 'refunded' ? `The shop has sent ${money(order.amount_paid || order.total)} back to your UPI account.` : ''}
               {order.discount > 0 ? ` The ${money(order.discount)} credit you used is back in your account.` : ''}
             </p>
             {isOwner && <OrderAgainButton order={order} />}
@@ -180,7 +194,14 @@ export default function OrderTrack() {
           </div>
         ) : (
           <div className="panel grid gap-8 p-6 sm:grid-cols-[1fr_auto]">
-            <StatusTracker status={order.status} />
+            {PAYMENT_PENDING.includes(order.payment_status) ? (
+              <div>
+                <p className="font-semibold">{order.payment_status === 'verifying' ? 'Payment being checked' : 'Waiting for payment'}</p>
+                <p className="mt-1 text-ink/70">The kitchen sees your order and starts cooking once your payment is confirmed.</p>
+              </div>
+            ) : (
+              <StatusTracker status={order.status} />
+            )}
             <div className="sm:border-l sm:border-line sm:pl-8">
               <p className="text-sm text-ink/65">Pickup</p>
               <p className="num text-2xl font-extrabold">{fmtTime(order.pickup_time)}</p>
@@ -248,7 +269,11 @@ export default function OrderTrack() {
 
       <Modal open={confirming} onClose={() => setConfirming(false)} title="Cancel this order?">
         <p className="text-ink/75">
-          The kitchen will be told straight away{order.payment_status === 'paid' && order.amount_paid > 0 ? `, and the ${money(order.amount_paid)} you paid will be refunded to your UPI account` : ''}.
+          The kitchen will be told straight away
+          {(order.payment_status === 'paid' && order.payment_method === 'upi') || order.payment_status === 'verifying'
+            ? `, and the shop will send the ${money(order.amount_paid || order.total)} you paid back to your UPI account`
+            : ''}
+          .
           {order.discount > 0 ? ` Your ${money(order.discount)} credit comes back too.` : ''}
         </p>
         <div className="mt-6 flex gap-3">

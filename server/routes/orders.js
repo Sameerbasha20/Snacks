@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { randomBytes } from 'node:crypto';
+import QRCode from 'qrcode';
 import { getOrder, getSettings, listOrders, nowIso, one, q, tx } from '../db.js';
 import { ah, requireAuth, requireRole } from '../middleware/auth.js';
 import { notifyReady } from '../push.js';
@@ -13,11 +13,33 @@ router.use(requireAuth);
 const isStaff = (u) => u.role === 'kitchen' || u.role === 'admin';
 const round = (n) => Math.round(n * 100) / 100;
 
-// DEMO payment gateway: the payment sheet in the browser simulates UPI and tells us the outcome.
-// To go live, replace this with a Razorpay/Cashfree order + signature check before saving the order.
-const PAYMENT_METHODS = ['upi_app', 'upi_id'];
+/*
+ * Payment is direct UPI to the shop's own UPI ID, confirmed by staff (no gateway, so nothing tells us automatically):
+ *   awaiting  -> customer has not paid yet (order saved, kitchen waits)
+ *   verifying -> customer says they paid and gave the UTR; staff check their UPI app
+ *   paid      -> staff confirmed, kitchen can cook
+ *   refund_due / refunded -> cancelled after paying; staff send the money back by hand
+ *   failed    -> staff found no payment and cancelled the order
+ *   void      -> cancelled before paying
+ * Older orders may be 'unpaid' (pay at the counter).
+ */
+export const PAYABLE = ['awaiting', 'verifying'];
+const UTR = /^\d{12}$/;
 
-// Place an order. The customer has already (demo-)paid the amount shown at checkout.
+/** upi://pay link: on a phone this opens the list of installed UPI apps with the amount filled in. */
+function upiLink(settings, order) {
+  const p = new URLSearchParams({
+    pa: settings.upi_id,
+    pn: settings.upi_name || settings.shop_name,
+    am: Number(order.total).toFixed(2),
+    cu: 'INR',
+    tn: `${settings.shop_name} order ${order.id}`,
+  });
+  // Spaces as %20 and a literal @: some UPI apps don't decode + or %40 in these links.
+  return `upi://pay?${p.toString().replaceAll('+', '%20').replaceAll('%40', '@')}`;
+}
+
+// Place an order. It waits for UPI payment unless store credit covers all of it.
 router.post(
   '/',
   ah(async (req, res) => {
@@ -26,7 +48,6 @@ router.post(
     validatePickup(pickup, settings);
     const note = String(req.body.note || '').trim().slice(0, 300);
     const cancelDeadline = new Date(pickup.getTime() - settings.default_cancel_before_minutes * 60_000);
-    const payment = req.body.payment || {};
 
     const id = await tx(async (client) => {
       const { lines, total: subtotal } = await priceItems(req.body.items, { client });
@@ -35,19 +56,15 @@ router.post(
       const discount = round(Math.min(balance, subtotal));
       const total = round(subtotal - discount);
 
-      if (total > 0) {
-        if (!PAYMENT_METHODS.includes(payment.method) || payment.status !== 'success') {
-          throw new HttpError(402, 'Payment was not completed. Nothing was charged.');
-        }
-        if (round(Number(payment.amount)) !== total) {
-          throw new HttpError(409, 'Prices changed while you were paying. Please check your order and pay again.');
-        }
+      if (req.body.expected_total !== undefined && round(Number(req.body.expected_total)) !== total) {
+        throw new HttpError(409, 'Prices changed while you were ordering. Please check your order total and try again.');
       }
       const now = nowIso();
+      const paidNow = total === 0;
       const row = await one(
         `INSERT INTO orders (user_id, pickup_time, subtotal, discount, total, note, cancel_deadline, created_at, updated_at,
                              payment_status, payment_method, payment_ref, amount_paid, paid_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, 'paid', $9, $10, $5, $8) RETURNING id`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9, $10, NULL, 0, $11) RETURNING id`,
         [
           req.user.id,
           pickup.toISOString(),
@@ -57,8 +74,9 @@ router.post(
           note,
           cancelDeadline.toISOString(),
           now,
-          total > 0 ? payment.method : 'credit',
-          `DEMO-${randomBytes(4).toString('hex').toUpperCase()}`,
+          paidNow ? 'paid' : 'awaiting',
+          paidNow ? 'credit' : 'upi',
+          paidNow ? now : null,
         ],
         client
       );
@@ -123,6 +141,83 @@ router.post(
   })
 );
 
+// What the customer needs to pay: the UPI link and a QR of it for paying from another device.
+router.get(
+  '/:id/upi',
+  ah(async (req, res) => {
+    const order = await getOrder(req.params.id);
+    if (!order || order.user_id !== req.user.id) return res.status(404).json({ error: 'Order not found' });
+    if (!PAYABLE.includes(order.payment_status) || order.status === 'cancelled') {
+      return res.status(400).json({ error: 'This order does not need paying.' });
+    }
+    const settings = await getSettings();
+    const link = upiLink(settings, order);
+    const qr = await QRCode.toDataURL(link, { width: 480, margin: 1, color: { dark: '#1C1A17', light: '#FFFFFF' } });
+    res.json({ link, qr, upi_id: settings.upi_id, upi_name: settings.upi_name || settings.shop_name, amount: order.total });
+  })
+);
+
+// Customer says they've paid and gives the 12-digit UTR from their UPI app, so staff can find it.
+router.post(
+  '/:id/payment-sent',
+  ah(async (req, res) => {
+    const order = await getOrder(req.params.id);
+    if (!order || order.user_id !== req.user.id) return res.status(404).json({ error: 'Order not found' });
+    if (!PAYABLE.includes(order.payment_status) || order.status === 'cancelled') {
+      return res.status(400).json({ error: 'This order does not need paying.' });
+    }
+    const utr = String(req.body.utr || '').replace(/\s/g, '');
+    if (!UTR.test(utr)) {
+      return res.status(400).json({ error: 'Enter the 12-digit UTR (also called UPI reference or transaction ID) from your UPI app.' });
+    }
+    if (await one('SELECT 1 FROM orders WHERE payment_ref = $1 AND id <> $2', [utr, order.id])) {
+      return res.status(409).json({ error: 'That UTR is already used on another order. Check you copied the one for this payment.' });
+    }
+    const flipped = await one(
+      "UPDATE orders SET payment_status = 'verifying', payment_ref = $1, updated_at = $2 WHERE id = $3 AND payment_status = ANY($4::text[]) AND status <> 'cancelled' RETURNING id",
+      [utr, nowIso(), order.id, PAYABLE]
+    );
+    if (!flipped) throw new HttpError(409, 'This order has already changed. Refresh to see its status.');
+    res.json(await getOrder(order.id));
+  })
+);
+
+// Staff check their UPI app: confirm the money arrived, or cancel the order if it never came.
+router.post(
+  '/:id/payment',
+  requireRole('kitchen', 'admin'),
+  ah(async (req, res) => {
+    const order = await getOrder(req.params.id);
+    if (!order) throw new HttpError(404, 'Order not found');
+    const action = req.body.action;
+    if (!['confirm', 'reject'].includes(action)) throw new HttpError(400, 'Action must be confirm or reject');
+    const gone = 'This payment has already been dealt with. Refresh to see the order.';
+    if (!PAYABLE.includes(order.payment_status) || order.status === 'cancelled') throw new HttpError(409, gone);
+    const now = nowIso();
+    await tx(async (client) => {
+      if (action === 'confirm') {
+        const ok = await one(
+          "UPDATE orders SET payment_status = 'paid', amount_paid = total, paid_at = $1, updated_at = $1 WHERE id = $2 AND payment_status = ANY($3::text[]) AND status <> 'cancelled' RETURNING id",
+          [now, order.id, PAYABLE],
+          client
+        );
+        if (!ok) throw new HttpError(409, gone);
+      } else {
+        const ok = await one(
+          "UPDATE orders SET status = 'cancelled', cancelled_at = $1, cancelled_by = $2, payment_status = 'failed', updated_at = $1 WHERE id = $3 AND payment_status = ANY($4::text[]) AND status <> 'cancelled' RETURNING id",
+          [now, req.user.role, order.id, PAYABLE],
+          client
+        );
+        if (!ok) throw new HttpError(409, gone);
+        if (order.discount > 0) {
+          await addCredit(client, order.user_id, order.discount, `Credit returned from cancelled order ${order.id}`, order.id);
+        }
+      }
+    });
+    res.json(await getOrder(order.id));
+  })
+);
+
 // Customer rates the dishes of a collected order (1-5 stars each).
 router.post(
   '/:id/ratings',
@@ -157,6 +252,9 @@ router.patch(
     const target = String(req.body.status || '');
     if (!KITCHEN_TRANSITIONS[order.status]?.includes(target)) {
       throw new HttpError(400, `Cannot move order from ${order.status} to ${target}`);
+    }
+    if (order.status === 'placed' && PAYABLE.includes(order.payment_status)) {
+      throw new HttpError(409, 'Confirm the UPI payment before you start cooking this order.');
     }
     const now = nowIso();
     let extra = '';

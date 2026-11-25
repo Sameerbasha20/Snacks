@@ -60,6 +60,12 @@ export default function Settings() {
         <Row label="Referral reward (₹)" hint="A new customer gets this much credit when they sign up with a friend's code. The friend gets the same once that customer collects their first order.">
           <input className="input" type="number" min="0" value={s.referral_amount} onChange={set('referral_amount')} />
         </Row>
+        <Row label="UPI ID" hint="Customers pay this UPI ID for every order. Check each payment arrived before the kitchen starts cooking.">
+          <input className="input num" autoComplete="off" spellCheck={false} value={s.upi_id} onChange={set('upi_id')} />
+        </Row>
+        <Row label="Name shown when paying" hint="Customers see this as who they're paying in their UPI app.">
+          <input className="input" value={s.upi_name} onChange={set('upi_name')} />
+        </Row>
         <div className="py-5">
           <button disabled={busy} className="btn btn-dark">
             Save settings

@@ -18,12 +18,16 @@ export async function addCredit(client, userId, amount, reason, orderId = null) 
 }
 
 /**
- * Cancelling an order refunds it: the (demo) payment is marked refunded and any credit used goes back.
+ * Cancelling an order: any store credit used goes straight back.
+ * UPI money has to be sent back by staff, so a paid (or claimed-paid) order becomes "refund due".
  * Returns the columns to set on the order.
  */
 export async function refundOnCancel(client, order) {
   if (order.discount > 0) await addCredit(client, order.user_id, order.discount, `Credit returned from cancelled order ${order.id}`, order.id);
-  return order.payment_status === 'paid' ? { payment_status: 'refunded' } : {};
+  if (order.payment_status === 'paid' && order.payment_method === 'credit') return {};
+  if (order.payment_status === 'paid' || order.payment_status === 'verifying') return { payment_status: 'refund_due' };
+  if (order.payment_status === 'awaiting') return { payment_status: 'void' };
+  return {};
 }
 
 /** The person who referred this customer earns credit when the customer collects their first order. */

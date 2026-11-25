@@ -56,6 +56,11 @@ router.put(
       fields.cancel_deadline = new Date(pickup.getTime() - mins * 60_000).toISOString();
     }
     if (b.note !== undefined) fields.note = String(b.note).slice(0, 300);
+    // Staff sent a cancelled order's UPI money back from their own app.
+    if (b.refund_sent) {
+      if (order.payment_status !== 'refund_due') throw new HttpError(400, 'This order has no refund waiting.');
+      fields.payment_status = 'refunded';
+    }
     if (b.status !== undefined) {
       if (!STATUSES.includes(b.status)) throw new HttpError(400, 'Invalid status');
       fields.status = b.status;
@@ -128,6 +133,13 @@ router.put(
         return res.status(400).json({ error: `Invalid ${k.replaceAll('_', ' ')}` });
       }
     }
+    if (b.upi_id !== undefined) {
+      b.upi_id = String(b.upi_id).trim();
+      if (!/^[\w.-]{2,256}@[a-zA-Z][\w.-]{1,64}$/.test(b.upi_id)) {
+        return res.status(400).json({ error: 'That UPI ID looks wrong. It should look like name@bank, for example 98xxxxxx@ibl.' });
+      }
+    }
+    if (b.upi_name !== undefined) b.upi_name = String(b.upi_name).trim().slice(0, 50);
     res.json(await setSettings(b));
   })
 );

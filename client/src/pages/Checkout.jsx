@@ -8,7 +8,6 @@ import { buildSlots, useSettings } from '../lib/slots';
 import { QtyStepper } from '../components/CartDrawer';
 import FoodImage from '../components/FoodImage';
 import { Spinner } from '../components/AuthShell';
-import DemoPayment from '../components/DemoPayment';
 
 export default function Checkout() {
   const { items, total, setQty, clear } = useCart();
@@ -18,7 +17,6 @@ export default function Checkout() {
   const [slot, setSlot] = useState(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
-  const [paying, setPaying] = useState(false);
   const [credit, setCredit] = useState(0);
   const [useCredit, setUseCredit] = useState(true);
 
@@ -48,11 +46,11 @@ export default function Checkout() {
 
   const start = () => {
     if (!slot) return toast.error('Choose a pickup time first.');
-    if (toPay > 0) setPaying(true);
-    else place(null); // fully covered by credit
+    place();
   };
 
-  const place = async (payment) => {
+  // The order is saved first; the customer then pays by UPI on the order page, and the kitchen waits for that.
+  const place = async () => {
     setBusy(true);
     try {
       const order = await api('/orders', {
@@ -61,16 +59,14 @@ export default function Checkout() {
           pickup_time: slot,
           note,
           use_credit: discount > 0,
-          payment,
+          expected_total: toPay,
           items: items.map((i) => ({ menu_item_id: i.id, qty: i.qty })),
         },
       });
       clear();
       navigate(`/orders/${order.id}`, { state: { justPlaced: true } });
     } catch (e) {
-      setPaying(false);
-      // In live mode the gateway would refund automatically here.
-      toast.error(payment ? `${e.message} Your payment will be refunded.` : e.message);
+      toast.error(e.message);
       setBusy(false);
     }
   };
@@ -181,12 +177,11 @@ export default function Checkout() {
             <span className="num font-semibold">{slot ? `${fmtDay(slot)} at ${fmtTime(slot)}` : 'Not chosen yet'}</span>
           </div>
           <button disabled={busy || !slot} onClick={start} className="btn btn-primary mt-4 w-full text-base">
-            {busy ? <Spinner /> : toPay > 0 ? `Pay ${money(toPay)} and place order` : 'Place order with credit'}
+            {busy ? <Spinner /> : toPay > 0 ? `Place order and pay ${money(toPay)}` : 'Place order with credit'}
           </button>
-          <p className="mt-2 text-center text-sm text-muted">Paid by UPI. Cancel in time and you get it all back.</p>
+          <p className="mt-2 text-center text-sm text-muted">Next, pay by UPI with any app: GPay, PhonePe, Paytm or BHIM.</p>
         </div>
       </aside>
-      <DemoPayment open={paying} amount={toPay} onClose={() => setPaying(false)} onPaid={place} />
     </div>
   );
 }

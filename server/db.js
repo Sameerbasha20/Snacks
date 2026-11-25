@@ -152,6 +152,9 @@ const DEFAULT_SETTINGS = {
   open_time: '08:00',
   close_time: '22:00',
   referral_amount: '20',
+  // Where customers send UPI payments. Staff confirm each payment by hand (no gateway yet).
+  upi_id: '9642388892-3@ibl',
+  upi_name: '', // empty: use the shop name
 };
 
 /** Short, readable code like SAMEE7K2. Unique across users. */
@@ -264,6 +267,8 @@ export async function getSettings() {
     open_time: s.open_time,
     close_time: s.close_time,
     referral_amount: Number(s.referral_amount),
+    upi_id: s.upi_id,
+    upi_name: s.upi_name || s.shop_name,
   };
 }
 
