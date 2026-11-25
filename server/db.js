@@ -1,0 +1,194 @@
+import pg from 'pg';
+import bcrypt from 'bcryptjs';
+import { config } from './config.js';
+import { ADMIN_SEED, MENU_SEED } from './seedData.js';
+
+// COUNT(*) etc. come back as bigint strings; our numbers are small, so parse them.
+pg.types.setTypeParser(20, (v) => Number(v));
+
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is not set. Run `vercel env pull .env.local` or add it to .env.');
+}
+
+// Small pool: on Vercel each function instance holds its own connections.
+export const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: process.env.VERCEL ? 3 : 10,
+  idleTimeoutMillis: 10_000,
+});
+
+export const nowIso = () => new Date().toISOString();
+
+export async function q(sql, params = [], client = pool) {
+  const { rows } = await client.query(sql, params);
+  return rows;
+}
+
+export async function one(sql, params = [], client = pool) {
+  const rows = await q(sql, params, client);
+  return rows[0] ?? null;
+}
+
+export async function tx(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// Timestamps are ISO-8601 UTC strings set by the app, so they sort and compare as text.
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  phone TEXT,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user','kitchen','admin')),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS menu_items (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL CHECK (category IN ('snacks','drinks','food')),
+  price DOUBLE PRECISION NOT NULL,
+  emoji TEXT,
+  image_url TEXT,
+  description TEXT,
+  is_available BOOLEAN NOT NULL DEFAULT TRUE,
+  prep_minutes INTEGER NOT NULL DEFAULT 15
+);
+CREATE TABLE IF NOT EXISTS orders (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  pickup_time TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'placed'
+    CHECK (status IN ('placed','accepted','preparing','ready','collected','cancelled')),
+  total DOUBLE PRECISION NOT NULL,
+  note TEXT,
+  cancel_deadline TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  ready_at TEXT,
+  collected_at TEXT,
+  cancelled_at TEXT,
+  cancelled_by TEXT
+);
+CREATE INDEX IF NOT EXISTS orders_updated_idx ON orders (updated_at);
+CREATE INDEX IF NOT EXISTS orders_user_idx ON orders (user_id);
+CREATE TABLE IF NOT EXISTS order_items (
+  id SERIAL PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  menu_item_id INTEGER REFERENCES menu_items(id) ON DELETE SET NULL,
+  name_snapshot TEXT NOT NULL,
+  emoji_snapshot TEXT,
+  price_snapshot DOUBLE PRECISION NOT NULL,
+  qty INTEGER NOT NULL CHECK (qty > 0)
+);
+CREATE INDEX IF NOT EXISTS order_items_order_idx ON order_items (order_id);
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  keys_json TEXT NOT NULL
+);
+`;
+
+const DEFAULT_SETTINGS = {
+  shop_name: 'Snack Shack',
+  min_lead_minutes: '60',
+  default_cancel_before_minutes: '30',
+  open_time: '08:00',
+  close_time: '22:00',
+};
+
+/** Create tables and first-run data. Safe to call repeatedly; runs once per process. */
+let ready;
+export function ensureDb() {
+  ready ||= (async () => {
+    await pool.query(SCHEMA);
+    for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
+      await pool.query('INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [k, v]);
+    }
+    const { n } = await one('SELECT COUNT(*)::int AS n FROM users');
+    if (n === 0) {
+      for (const u of ADMIN_SEED(config)) {
+        await pool.query(
+          'INSERT INTO users (name, email, phone, password_hash, role, created_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (email) DO NOTHING',
+          [u.name, u.email.toLowerCase(), '', bcrypt.hashSync(u.password, 10), u.role, nowIso()]
+        );
+      }
+    }
+    const { m } = await one('SELECT COUNT(*)::int AS m FROM menu_items');
+    if (m === 0) {
+      for (const [name, category, price, emoji, description, prep, image] of MENU_SEED) {
+        await pool.query(
+          'INSERT INTO menu_items (name, category, price, emoji, description, prep_minutes, image_url) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [name, category, price, emoji, description, prep, image]
+        );
+      }
+    }
+  })().catch((e) => {
+    ready = null; // let the next request retry
+    throw e;
+  });
+  return ready;
+}
+
+export async function getSettings() {
+  const rows = await q('SELECT key, value FROM settings');
+  const s = { ...DEFAULT_SETTINGS, ...Object.fromEntries(rows.map((r) => [r.key, r.value])) };
+  return {
+    shop_name: s.shop_name,
+    min_lead_minutes: Number(s.min_lead_minutes),
+    default_cancel_before_minutes: Number(s.default_cancel_before_minutes),
+    open_time: s.open_time,
+    close_time: s.close_time,
+  };
+}
+
+export async function setSettings(patch) {
+  for (const [k, v] of Object.entries(patch)) {
+    if (k in DEFAULT_SETTINGS && v !== undefined && v !== null && v !== '') {
+      await pool.query('INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', [k, String(v)]);
+    }
+  }
+  return getSettings();
+}
+
+const ORDER_SQL = `
+  SELECT o.*, u.name AS customer_name, u.phone AS customer_phone, u.email AS customer_email
+  FROM orders o JOIN users u ON u.id = o.user_id`;
+
+async function attachItems(orders, client = pool) {
+  if (!orders.length) return orders;
+  const items = await q(
+    `SELECT id, order_id, menu_item_id, name_snapshot AS name, emoji_snapshot AS emoji, price_snapshot AS price, qty
+     FROM order_items WHERE order_id = ANY($1::int[]) ORDER BY id`,
+    [orders.map((o) => o.id)],
+    client
+  );
+  const byOrder = new Map(orders.map((o) => [o.id, []]));
+  for (const it of items) byOrder.get(it.order_id)?.push(it);
+  return orders.map((o) => ({ ...o, items: byOrder.get(o.id) }));
+}
+
+export async function getOrder(id, client = pool) {
+  const o = await one(`${ORDER_SQL} WHERE o.id = $1`, [Number(id) || 0], client);
+  if (!o) return null;
+  return (await attachItems([o], client))[0];
+}
+
+/** `where` uses $1..$n placeholders matching `params`. `order` is a fixed, trusted SQL fragment. */
+export async function listOrders(where = 'TRUE', params = [], order = 'o.pickup_time ASC') {
+  return attachItems(await q(`${ORDER_SQL} WHERE ${where} ORDER BY ${order}`, params));
+}
