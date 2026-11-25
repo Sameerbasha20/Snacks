@@ -1,7 +1,10 @@
 const TOKEN_KEY = 'snack_token';
 
-export const getToken = () => localStorage.getItem(TOKEN_KEY);
-export const setToken = (t) => (t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY));
+// Logins last only for this browser session: closing the browser logs you out.
+// Older versions kept the token in localStorage, so clear any left there.
+localStorage.removeItem(TOKEN_KEY);
+export const getToken = () => sessionStorage.getItem(TOKEN_KEY);
+export const setToken = (t) => (t ? sessionStorage.setItem(TOKEN_KEY, t) : sessionStorage.removeItem(TOKEN_KEY));
 
 export async function api(path, { method = 'GET', body } = {}) {
   const headers = { 'Content-Type': 'application/json' };

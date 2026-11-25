@@ -3,7 +3,7 @@ import { config } from '../config.js';
 import { one } from '../db.js';
 
 export function signToken(user) {
-  return jwt.sign({ id: user.id, role: user.role }, config.jwtSecret, { expiresIn: '30d' });
+  return jwt.sign({ id: user.id, role: user.role }, config.jwtSecret, { expiresIn: '12h' });
 }
 
 export async function verifyToken(token) {
