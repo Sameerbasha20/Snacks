@@ -69,14 +69,14 @@ export async function comboParts(rows, client) {
   if (!combos.length) return out;
   const specs = new Map(combos.map((c) => [c.id, safeParse(c.combo_items)]));
   const ids = [...new Set([...specs.values()].flat().map((p) => Number(p.menu_item_id)))];
-  const items = new Map((await q('SELECT id, name, price, is_available FROM menu_items WHERE id = ANY($1::int[])', [ids], client)).map((r) => [r.id, r]));
+  const items = new Map((await q('SELECT id, name, price, is_available, is_veg FROM menu_items WHERE id = ANY($1::int[])', [ids], client)).map((r) => [r.id, r]));
   for (const [comboId, spec] of specs) {
     out.set(
       comboId,
       spec.map((p) => {
         const it = items.get(Number(p.menu_item_id));
         // A deleted component makes the combo unorderable.
-        return { menu_item_id: Number(p.menu_item_id), qty: p.qty, name: it?.name ?? 'Removed item', price: it?.price ?? 0, is_available: !!it?.is_available };
+        return { menu_item_id: Number(p.menu_item_id), qty: p.qty, name: it?.name ?? 'Removed item', price: it?.price ?? 0, is_available: !!it?.is_available, is_veg: it?.is_veg !== false };
       })
     );
   }

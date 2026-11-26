@@ -5,8 +5,9 @@ import { api, CATEGORY_LABEL, MENU_ORDER, money } from '../../lib/api';
 import Modal from '../../components/Modal';
 import FoodImage from '../../components/FoodImage';
 import Icon from '../../components/Icon';
+import { VegMark } from '../../components/Diet';
 
-const EMPTY = { name: '', category: 'snacks', price: '', image_url: '', description: '', prep_minutes: 15, is_available: true };
+const EMPTY = { name: '', category: 'snacks', price: '', image_url: '', description: '', prep_minutes: 15, is_available: true, is_veg: true };
 
 /** Pick the dishes inside a combo and show what customers save. */
 function ComboParts({ parts, setParts, menu, price }) {
@@ -139,7 +140,10 @@ export default function MenuManager() {
                   <li key={m.id} className={`flex items-center gap-4 py-3 ${m.is_available ? '' : 'opacity-50'}`}>
                     <FoodImage src={m.image_url} alt={m.name} className="h-12 w-12 shrink-0 rounded-md" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">{m.name}</p>
+                      <p className="flex items-center gap-2 font-semibold">
+                        <VegMark veg={m.is_veg !== false} size={13} />
+                        <span className="truncate">{m.name}</span>
+                      </p>
                       <p className="num text-sm text-ink/60">
                         {m.combo ? m.combo.map((p) => `${p.qty}× ${p.name}`).join(', ') : `${money(m.price)}, about ${m.prep_minutes} min`}
                       </p>
@@ -191,6 +195,31 @@ export default function MenuManager() {
                 <input className="input" type="number" min="1" value={editing.prep_minutes} onChange={set('prep_minutes')} />
               </label>
             </div>
+            {editing.category === 'combos' ? (
+              <p className="flex items-center gap-2 text-sm text-ink/65">
+                <VegMark veg={editing.is_veg !== false} size={13} decorative /> A combo shows as veg only when every dish in it is veg.
+              </p>
+            ) : (
+              <fieldset>
+                <legend className="label">Type</legend>
+                <div className="flex gap-2">
+                  {[
+                    [true, 'Veg'],
+                    [false, 'Non-veg'],
+                  ].map(([v, label]) => (
+                    <label
+                      key={label}
+                      className={`flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border-[1.5px] font-semibold transition-colors ${
+                        (editing.is_veg !== false) === v ? 'border-ink bg-surface' : 'border-line text-ink/60 hover:border-ink/40'
+                      }`}
+                    >
+                      <input type="radio" name="is_veg" className="sr-only" checked={(editing.is_veg !== false) === v} onChange={() => setEditing({ ...editing, is_veg: v })} />
+                      <VegMark veg={v} size={14} decorative /> {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
             {editing.category === 'combos' && (
               <ComboParts
                 parts={editing.combo?.length ? editing.combo : [{ menu_item_id: 0, qty: 1 }, { menu_item_id: 0, qty: 1 }]}

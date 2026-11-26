@@ -25,6 +25,8 @@ router.get(
         row.combo = combo.map(({ menu_item_id, name, qty }) => ({ menu_item_id, name, qty }));
         row.regular_price = combo.reduce((s, p) => s + p.price * p.qty, 0);
         row.components_available = combo.every((p) => p.is_available);
+        // A combo is veg only if everything in it is.
+        row.is_veg = combo.every((p) => p.is_veg);
         // Customers don't see a combo while one of its parts is sold out.
         if (!all && !row.components_available) continue;
       }
@@ -43,6 +45,7 @@ function readItem(body, existing = {}) {
     image_url: String(body.image_url ?? existing.image_url ?? '').trim() || null,
     description: String(body.description ?? existing.description ?? '').trim(),
     is_available: Boolean(body.is_available ?? existing.is_available ?? true),
+    is_veg: Boolean(body.is_veg ?? existing.is_veg ?? true),
     prep_minutes: Math.max(1, Math.floor(Number(body.prep_minutes ?? existing.prep_minutes ?? 15))),
     combo_items: null,
   };
@@ -61,7 +64,7 @@ function readItem(body, existing = {}) {
   return item;
 }
 
-const FIELDS = ['name', 'category', 'price', 'emoji', 'image_url', 'description', 'is_available', 'prep_minutes', 'combo_items'];
+const FIELDS = ['name', 'category', 'price', 'emoji', 'image_url', 'description', 'is_available', 'is_veg', 'prep_minutes', 'combo_items'];
 
 router.post(
   '/',

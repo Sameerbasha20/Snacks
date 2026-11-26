@@ -8,6 +8,7 @@ import { useCart } from '../lib/cart';
 import { useEarliestPickup } from '../lib/slots';
 import FoodImage from '../components/FoodImage';
 import Icon from '../components/Icon';
+import { DietFilter, matchesDiet, useDiet, VegMark } from '../components/Diet';
 
 const EASE = [0.22, 1, 0.36, 1];
 
@@ -240,11 +241,11 @@ function OrderNowButton({ to, big = false, label = 'Order now', className = '' }
 /* ─────────────────────── Menu explorer ─────────────────────── */
 
 const CRAVINGS = [
-  { id: 'biryani', title: 'Biryani', img: '/images/biryani-plate.jpg', text: 'Dum-cooked in sealed pots so the rice takes in every spice. Served with raita and salan.' },
-  { id: 'burgers', title: 'Burgers & pizza', img: '/images/pizza.jpg', text: 'Burgers fried when you order, sandwiches grilled crisp, thin-crust pizza from the oven.' },
-  { id: 'homemade', title: 'Home-made', img: '/images/home-thali.jpg', text: 'Thalis, dal rice and curries cooked the way they are at home, not restaurant-rich.' },
-  { id: 'snacks', title: 'Snacks & puffs', img: '/images/egg-puff.jpg', text: 'Samosas, bakery puffs and vada pav for the evening chai break.' },
-  { id: 'combos', title: 'Combos', img: '/images/veg-burger.jpg', text: 'A main, a side and a drink for less than buying them apart.' },
+  { id: 'biryani', title: 'Biryani', img: '/images/biryani-plate.jpg', veg: '/images/veg-biryani.jpg', text: 'Dum-cooked in sealed pots so the rice takes in every spice. Served with raita and salan.' },
+  { id: 'burgers', title: 'Burgers & pizza', img: '/images/pizza.jpg', nonveg: '/images/chicken-burger.jpg', text: 'Burgers fried when you order, sandwiches grilled crisp, thin-crust pizza from the oven.' },
+  { id: 'homemade', title: 'Home-made', img: '/images/home-thali.jpg', nonveg: '/images/chicken-curry.jpg', text: 'Thalis, dal rice and curries cooked the way they are at home, not restaurant-rich.' },
+  { id: 'snacks', title: 'Snacks & puffs', img: '/images/egg-puff.jpg', veg: '/images/samosa.jpg', text: 'Samosas, bakery puffs and vada pav for the evening chai break.' },
+  { id: 'combos', title: 'Combos', img: '/images/veg-burger.jpg', nonveg: '/images/chicken-burger.jpg', text: 'A main, a side and a drink for less than buying them apart.' },
   { id: 'drinks', title: 'Drinks', img: '/images/mango-lassi.jpg', text: 'Chai, cold coffee, lassi and fresh lime soda.' },
 ];
 
@@ -265,7 +266,10 @@ function DishCard({ item, orderLink, canAdd }) {
         <FoodImage src={item.image_url} alt={item.name} className="h-full w-full transition-transform duration-500 group-hover:scale-110" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="font-bold leading-snug">{item.name}</p>
+        <p className="flex items-baseline gap-2 font-bold leading-snug">
+          <VegMark veg={item.is_veg !== false} size={13} className="relative top-0.5" />
+          {item.name}
+        </p>
         <p className="num mt-0.5 text-ink/70">{money(item.price)}</p>
       </div>
       {canAdd ? (
@@ -293,11 +297,17 @@ function DishCard({ item, orderLink, canAdd }) {
 function MenuExplorer({ menu, orderLink }) {
   const { user } = useAuth();
   const canAdd = user?.role === 'user';
-  const tabs = useMemo(() => (menu ? CRAVINGS.filter((c) => menu.some((m) => m.category === c.id)) : CRAVINGS.slice(0, 4)), [menu]);
+  const [diet, setDiet] = useDiet();
+  const tabs = useMemo(
+    () => (menu ? CRAVINGS.filter((c) => menu.some((m) => m.category === c.id && matchesDiet(diet, m))) : CRAVINGS.slice(0, 4)),
+    [menu, diet]
+  );
   const [active, setActive] = useState('biryani');
   const current = tabs.find((t) => t.id === active) ?? tabs[0];
-  const dishes = (menu ?? []).filter((m) => m.category === current?.id);
+  const dishes = (menu ?? []).filter((m) => m.category === current?.id && matchesDiet(diet, m));
   const shown = dishes.slice(0, 5);
+  // The photo follows the filter, so Veg never shows a mutton biryani.
+  const photo = current?.[diet] ?? current?.img;
 
   if (!current) return null;
   return (
@@ -308,7 +318,9 @@ function MenuExplorer({ menu, orderLink }) {
           <p className="max-w-sm text-ink/70">Everything is made in our kitchen after you order. Nothing is reheated.</p>
         </div>
 
-        <div className="-mx-4 mt-8 overflow-x-auto px-4 sm:mx-0 sm:px-0" role="tablist" aria-label="Menu sections">
+        <DietFilter diet={diet} onChange={setDiet} id="home-diet" className="mt-8" />
+
+        <div className="-mx-4 mt-4 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0" role="tablist" aria-label="Menu sections">
           <div className="flex w-max gap-1 rounded-full bg-line/50 p-1">
             {tabs.map((t) => (
               <button
@@ -334,8 +346,8 @@ function MenuExplorer({ menu, orderLink }) {
             <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-ink">
               <AnimatePresence initial={false}>
                 <motion.img
-                  key={current.img}
-                  src={current.img}
+                  key={photo}
+                  src={photo}
                   alt=""
                   initial={{ opacity: 0, scale: 1.06 }}
                   animate={{ opacity: 1, scale: 1 }}

@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 // Additions after the first release. Every statement is safe to re-run.
 const MIGRATIONS = `
 ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS combo_items TEXT;
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS is_veg BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE menu_items DROP CONSTRAINT IF EXISTS menu_items_category_check;
 ALTER TABLE menu_items ADD CONSTRAINT menu_items_category_check CHECK (category IN ('combos','snacks','burgers','biryani','homemade','drinks','food'));
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS subtotal DOUBLE PRECISION;
@@ -216,11 +217,21 @@ export function ensureDb() {
     }
     await seedCombos();
     await seedMenuV2();
+    await seedVegFlags();
   })().catch((e) => {
     ready = null; // let the next request retry
     throw e;
   });
   return ready;
+}
+
+/** Marks meat, chicken, egg and fish dishes as non-veg, once. After that the admin sets it per dish. */
+async function seedVegFlags() {
+  if (await one("SELECT 1 FROM settings WHERE key = 'seeded_veg_flags'")) return;
+  await pool.query(
+    "UPDATE menu_items SET is_veg = FALSE WHERE category <> 'combos' AND name ~* '(chicken|mutton|egg|fish|prawn|keema|omelet|meat|lamb)'"
+  );
+  await pool.query("INSERT INTO settings (key, value) VALUES ('seeded_veg_flags', '1') ON CONFLICT (key) DO NOTHING");
 }
 
 /** Sample combos, added once. Skipped if the admin has removed the items they use. */

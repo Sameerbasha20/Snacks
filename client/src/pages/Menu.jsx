@@ -11,6 +11,7 @@ import { useEarliestPickup } from '../lib/slots';
 import { CartPanel, QtyStepper } from '../components/CartDrawer';
 import FoodImage from '../components/FoodImage';
 import Icon from '../components/Icon';
+import { DietFilter, matchesDiet, useDiet, VegMark } from '../components/Diet';
 
 const LABEL = { fav: 'Favourites', ...CATEGORY_LABEL };
 
@@ -47,7 +48,10 @@ function MenuRow({ item, fav, onFav }) {
       <FoodImage src={item.image_url} alt={item.name} className="h-24 w-24 shrink-0 rounded-lg sm:h-28 sm:w-28" />
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-start justify-between gap-3">
-          <h3 className="text-lg font-bold tracking-tight">{item.name}</h3>
+          <h3 className="flex items-baseline gap-2 text-lg font-bold tracking-tight">
+            <VegMark veg={item.is_veg !== false} className="relative top-0.5" />
+            {item.name}
+          </h3>
           <div className="flex shrink-0 items-center gap-1">
             <span className="num font-semibold">{money(item.price)}</span>
             <button
@@ -109,6 +113,7 @@ export default function Menu() {
   const [menu, setMenu] = useState(null);
   const [q, setQ] = useState('');
   const [active, setActive] = useState('combos');
+  const [diet, setDiet] = useDiet();
   const sectionRefs = useRef({});
   const favs = useFavorites();
 
@@ -121,12 +126,12 @@ export default function Menu() {
   const groups = useMemo(() => {
     if (!menu) return [];
     const needle = q.trim().toLowerCase();
-    const match = (m) => !needle || `${m.name} ${m.description}`.toLowerCase().includes(needle);
+    const match = (m) => matchesDiet(diet, m) && (!needle || `${m.name} ${m.description}`.toLowerCase().includes(needle));
     return [
       { id: 'fav', items: menu.filter((m) => favs.ids.has(m.id) && match(m)) },
       ...MENU_ORDER.map((c) => ({ id: c, items: menu.filter((m) => m.category === c && match(m)) })),
     ].filter((g) => g.items.length);
-  }, [menu, q, favs.ids]);
+  }, [menu, q, favs.ids, diet]);
 
   // Highlight the category currently in view
   useEffect(() => {
@@ -170,7 +175,10 @@ export default function Menu() {
   return (
     <div className="mx-auto max-w-6xl px-4 pt-8 pb-40 sm:px-6 lg:pb-16">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-        <h1 className="text-4xl sm:text-5xl">Menu</h1>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <h1 className="text-4xl sm:text-5xl">Menu</h1>
+          <DietFilter diet={diet} onChange={setDiet} id="menu-diet" />
+        </div>
         {slot && (
           <p className="text-ink/70">
             Earliest pickup <span className="num font-semibold text-ink">{fmtTime(slot)}</span> {fmtDay(slot).toLowerCase()}
@@ -226,7 +234,16 @@ export default function Menu() {
               </ul>
             </section>
           ))}
-          {menu && groups.length === 0 && <p className="py-16 text-ink/70">Nothing matches “{q}”. Try a different word.</p>}
+          {menu && groups.length === 0 && (
+            <p className="py-16 text-ink/70">
+              {q.trim() ? <>Nothing matches “{q}”{diet !== 'all' && ' in this filter'}. Try a different word.</> : 'Nothing in this filter right now.'}{' '}
+              {diet !== 'all' && (
+                <button onClick={() => setDiet('all')} className="font-semibold underline underline-offset-4">
+                  Show everything
+                </button>
+              )}
+            </p>
+          )}
         </div>
 
         <aside className="hidden lg:block">
