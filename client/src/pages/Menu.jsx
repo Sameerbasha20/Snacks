@@ -11,7 +11,7 @@ import { useEarliestPickup } from '../lib/slots';
 import { CartPanel, QtyStepper } from '../components/CartDrawer';
 import FoodImage from '../components/FoodImage';
 import Icon from '../components/Icon';
-import { DietFilter, matchesDiet, useDiet, VegMark } from '../components/Diet';
+import { DietFilter, matchesDiet, useDiet, DishMark } from '../components/Diet';
 
 const LABEL = { fav: 'Favourites', ...CATEGORY_LABEL };
 
@@ -49,7 +49,7 @@ function MenuRow({ item, fav, onFav }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-start justify-between gap-3">
           <h3 className="flex items-baseline gap-2 text-lg font-bold tracking-tight">
-            <VegMark veg={item.is_veg !== false} className="relative top-0.5" />
+            <DishMark item={item} className="relative top-0.5" />
             {item.name}
           </h3>
           <div className="flex shrink-0 items-center gap-1">

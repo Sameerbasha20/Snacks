@@ -8,7 +8,7 @@ import { useCart } from '../lib/cart';
 import { useEarliestPickup } from '../lib/slots';
 import FoodImage from '../components/FoodImage';
 import Icon from '../components/Icon';
-import { DietFilter, matchesDiet, useDiet, VegMark } from '../components/Diet';
+import { DietFilter, matchesDiet, useDiet, DishMark } from '../components/Diet';
 
 const EASE = [0.22, 1, 0.36, 1];
 
@@ -267,7 +267,7 @@ function DishCard({ item, orderLink, canAdd }) {
       </div>
       <div className="min-w-0 flex-1">
         <p className="flex items-baseline gap-2 font-bold leading-snug">
-          <VegMark veg={item.is_veg !== false} size={13} className="relative top-0.5" />
+          <DishMark item={item} size={13} className="relative top-0.5" />
           {item.name}
         </p>
         <p className="num mt-0.5 text-ink/70">{money(item.price)}</p>

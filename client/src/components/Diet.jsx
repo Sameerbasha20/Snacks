@@ -47,6 +47,18 @@ export function VegMark({ veg, size = 14, className = '', decorative = false }) 
   );
 }
 
+/** Drinks get a chilled emoji instead of the veg / non-veg mark; everything else gets the mark. */
+export function DishMark({ item, size = 14, className = '' }) {
+  if (item.category === 'drinks') {
+    return (
+      <span className={`shrink-0 leading-none ${className}`} style={{ fontSize: size }} role="img" aria-label="Drink">
+        🧊
+      </span>
+    );
+  }
+  return <VegMark veg={item.is_veg !== false} size={size} className={className} />;
+}
+
 /** All / Veg / Non-veg switch. `id` keeps the sliding pill separate when two switches are on one page. */
 export function DietFilter({ diet, onChange, id = 'diet', className = '' }) {
   return (

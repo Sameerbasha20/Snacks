@@ -5,7 +5,7 @@ import { api, CATEGORY_LABEL, MENU_ORDER, money } from '../../lib/api';
 import Modal from '../../components/Modal';
 import FoodImage from '../../components/FoodImage';
 import Icon from '../../components/Icon';
-import { VegMark } from '../../components/Diet';
+import { DishMark, VegMark } from '../../components/Diet';
 
 const EMPTY = { name: '', category: 'snacks', price: '', image_url: '', description: '', prep_minutes: 15, is_available: true, is_veg: true };
 
@@ -141,7 +141,7 @@ export default function MenuManager() {
                     <FoodImage src={m.image_url} alt={m.name} className="h-12 w-12 shrink-0 rounded-md" />
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-2 font-semibold">
-                        <VegMark veg={m.is_veg !== false} size={13} />
+                        <DishMark item={m} size={13} />
                         <span className="truncate">{m.name}</span>
                       </p>
                       <p className="num text-sm text-ink/60">
@@ -195,7 +195,9 @@ export default function MenuManager() {
                 <input className="input" type="number" min="1" value={editing.prep_minutes} onChange={set('prep_minutes')} />
               </label>
             </div>
-            {editing.category === 'combos' ? (
+            {editing.category === 'drinks' ? (
+              <p className="text-sm text-ink/65">🧊 Drinks show under both Veg and Non-veg, so they don't need a type.</p>
+            ) : editing.category === 'combos' ? (
               <p className="flex items-center gap-2 text-sm text-ink/65">
                 <VegMark veg={editing.is_veg !== false} size={13} decorative /> A combo shows as veg only when every dish in it is veg.
               </p>
