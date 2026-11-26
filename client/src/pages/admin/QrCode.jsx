@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 
+/** Escape text for the printable HTML page. */
+const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
 export default function QrCode() {
   const [qr, setQr] = useState(null);
   const [url, setUrl] = useState('');
@@ -20,7 +23,7 @@ export default function QrCode() {
   const print = () => {
     const w = window.open('', '_blank', 'width=640,height=860');
     if (!w) return;
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${qr.shop_name} QR code</title>
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(qr.shop_name)} QR code</title>
       <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;800&display=swap" rel="stylesheet">
       <style>*{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}
       body{margin:0;font-family:'Schibsted Grotesk',sans-serif;background:#F5F1EA;color:#1C1A17;display:flex;justify-content:center}
@@ -34,11 +37,13 @@ export default function QrCode() {
       <body><div class="sheet"><h1>Order before you queue.</h1>
       <p>Scan to order from your phone. Pick a time and collect it hot from this counter.</p>
       <div class="qr"><img src="${qr.dataUrl}" alt=""></div>
-      <div class="foot"><span>${qr.shop_name}</span><span>Order 1 hour ahead</span></div></div>
-      <script>window.onload=()=>setTimeout(()=>window.print(),500)</script></body></html>`;
+      <div class="foot"><span>${esc(qr.shop_name)}</span><span>Order 1 hour ahead</span></div></div>
+      </body></html>`;
     w.document.open();
     w.document.write(html);
     w.document.close();
+    // Print from here: the popup inherits our security policy, which blocks inline scripts inside it.
+    setTimeout(() => w.print(), 700);
   };
 
   return (

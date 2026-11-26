@@ -52,6 +52,9 @@ router.post(
     const id = await tx(async (client) => {
       const { lines, total: subtotal } = await priceItems(req.body.items, { client });
       await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [req.user.id]); // one checkout at a time per customer
+      // Unpaid orders sit on the kitchen screen, so cap how many one customer can leave waiting.
+      const pending = await one("SELECT COUNT(*)::int AS n FROM orders WHERE user_id = $1 AND status <> 'cancelled' AND payment_status = ANY($2::text[])", [req.user.id, PAYABLE], client);
+      if (pending.n >= 3) throw new HttpError(429, 'You have 3 orders waiting for payment. Pay for or cancel one of them first.');
       const balance = req.body.use_credit ? await creditBalance(req.user.id, client) : 0;
       const discount = round(Math.min(balance, subtotal));
       const total = round(subtotal - discount);

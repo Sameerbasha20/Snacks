@@ -7,7 +7,7 @@ export function signToken(user) {
 }
 
 export async function verifyToken(token) {
-  const payload = jwt.verify(token, config.jwtSecret);
+  const payload = jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] });
   const user = await one('SELECT id, name, email, phone, role FROM users WHERE id = $1', [payload.id]);
   if (!user) throw new Error('User not found');
   return user;

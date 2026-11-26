@@ -36,11 +36,13 @@ export function validatePickup(pickup, settings, now = new Date()) {
 /** Resolve requested items against the live menu; returns priced lines and total. */
 export async function priceItems(items, { allowUnavailable = false, client } = {}) {
   if (!Array.isArray(items) || items.length === 0) throw new HttpError(400, 'Your cart is empty');
+  if (items.length > 50) throw new HttpError(400, 'Too many different items in one order (50 at most).');
   const merged = new Map();
   for (const it of items) {
     const qty = Math.floor(Number(it.qty));
     const id = Number(it.menu_item_id);
-    if (!id || !qty || qty < 1 || qty > 50) throw new HttpError(400, 'Invalid item quantity');
+    if (!Number.isInteger(id) || id < 1 || id > 2_147_483_647) throw new HttpError(400, 'An item in your cart is not on the menu');
+    if (!qty || qty < 1 || qty > 50) throw new HttpError(400, 'Invalid item quantity');
     merged.set(id, (merged.get(id) || 0) + qty);
   }
   const rows = await q('SELECT * FROM menu_items WHERE id = ANY($1::int[])', [[...merged.keys()]], client);

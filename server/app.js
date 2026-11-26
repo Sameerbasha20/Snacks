@@ -8,11 +8,16 @@ import adminRoutes from './routes/admin.js';
 import pushRoutes from './routes/push.js';
 import eventRoutes from './routes/events.js';
 import meRoutes from './routes/me.js';
+import { SECURITY_HEADERS } from './security.js';
 
 /** The API, shared by local `node server/index.js` and the Vercel function in api/index.js. */
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '1mb' }));
+app.use((req, res, next) => {
+  res.set(SECURITY_HEADERS);
+  next();
+});
+app.use(express.json({ limit: '200kb' }));
 
 // Make sure tables exist before any query (runs once per server instance).
 app.use('/api', ah(async (req, res, next) => {
@@ -33,7 +38,10 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  const status = err.status || 500;
+  // Body parser errors carry parser internals in their message; replace them with plain words.
+  if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'The request was not valid JSON.' });
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'The request was too large.' });
+  const status = err.status || err.statusCode || 500;
   if (status >= 500) console.error(err);
   res.status(status).json({ error: status >= 500 ? 'Something went wrong. Please try again.' : err.message });
 });
