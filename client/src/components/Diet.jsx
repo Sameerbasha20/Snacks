@@ -47,12 +47,16 @@ export function VegMark({ veg, size = 14, className = '', decorative = false }) 
   );
 }
 
-/** Drinks get a chilled emoji instead of the veg / non-veg mark; everything else gets the mark. */
+/** Chai, tea, hot coffee, soup and the like; anything called cold or iced stays cold. */
+const isHotDrink = (name = '') => /\b(chai|tea|hot|filter|kaapi|soup|badam milk|espresso|cappuccino|latte)\b/i.test(name) && !/\b(cold|iced?)\b/i.test(name);
+
+/** Drinks get ☕ (hot) or 🧊 (cold) instead of the veg / non-veg mark; everything else gets the mark. */
 export function DishMark({ item, size = 14, className = '' }) {
   if (item.category === 'drinks') {
+    const hot = isHotDrink(item.name);
     return (
-      <span className={`shrink-0 leading-none ${className}`} style={{ fontSize: size }} role="img" aria-label="Drink">
-        🧊
+      <span className={`shrink-0 leading-none ${className}`} style={{ fontSize: size }} role="img" aria-label={hot ? 'Hot drink' : 'Cold drink'}>
+        {hot ? '☕' : '🧊'}
       </span>
     );
   }
