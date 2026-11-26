@@ -9,8 +9,14 @@ import { getToken } from './api';
     order:ready    an order just became ready (customer)
 */
 const bus = new EventTarget();
-const VISIBLE_MS = 4000;
-const HIDDEN_MS = 15000;
+// Each poll is a paid serverless request and keeps the database awake, so poll only as often as people notice.
+// Staff screens stay quick; customers slow right down in the background (the page refreshes as soon as they return,
+// and push notifications cover "your food is ready").
+const INTERVALS = { staff: { visible: 5000, hidden: 30_000 }, user: { visible: 6000, hidden: 120_000 } };
+const interval = () => {
+  const r = INTERVALS[role === 'user' ? 'user' : 'staff'];
+  return document.hidden ? r.hidden : r.visible;
+};
 
 let timer = null;
 let since = null;
@@ -43,7 +49,7 @@ async function tick() {
   } catch {
     /* offline for a moment; try again next tick */
   }
-  if (running) timer = setTimeout(tick, document.hidden ? HIDDEN_MS : VISIBLE_MS);
+  if (running) timer = setTimeout(tick, interval());
 }
 
 function onVisible() {
@@ -61,7 +67,7 @@ export function connectSocket(userRole) {
   since = new Date().toISOString();
   seen.clear();
   document.addEventListener('visibilitychange', onVisible);
-  timer = setTimeout(tick, VISIBLE_MS);
+  timer = setTimeout(tick, interval());
 }
 
 export function disconnectSocket() {
