@@ -25,6 +25,7 @@ export async function addCredit(client, userId, amount, reason, orderId = null) 
 export async function refundOnCancel(client, order) {
   if (order.discount > 0) await addCredit(client, order.user_id, order.discount, `Credit returned from cancelled order ${order.id}`, order.id);
   if (order.payment_status === 'paid' && order.payment_method === 'credit') return {};
+  if (order.payment_status === 'paid' && order.payment_method === 'demo') return { payment_status: 'void' }; // no money was taken
   if (order.payment_status === 'paid' || order.payment_status === 'verifying') return { payment_status: 'refund_due' };
   if (order.payment_status === 'awaiting') return { payment_status: 'void' };
   return {};

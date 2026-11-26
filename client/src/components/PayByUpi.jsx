@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { api, money } from '../lib/api';
 import { Spinner } from './AuthShell';
 import Icon from './Icon';
+import DemoPayment from './DemoPayment';
 
 const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent;
 const IS_IOS = /iPhone|iPad|iPod/i.test(ua);
@@ -26,6 +27,19 @@ export default function PayByUpi({ order, onUpdated }) {
   const [error, setError] = useState('');
   const [showQr, setShowQr] = useState(!IS_PHONE);
   const [editing, setEditing] = useState(false);
+  const [demoOpen, setDemoOpen] = useState(false);
+
+  // Demo payment (when switched on in Settings): no money moves, the order is marked paid at once.
+  const demoPay = async () => {
+    try {
+      // The order page announces the confirmed payment itself.
+      onUpdated(await api(`/orders/${order.id}/demo-pay`, { method: 'POST' }));
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setDemoOpen(false);
+    }
+  };
   const verifying = order.payment_status === 'verifying';
 
   useEffect(() => {
@@ -158,6 +172,16 @@ export default function PayByUpi({ order, onUpdated }) {
             </div>
           </div>
           {utrForm}
+          {upi.demo && (
+            <div className="border-t border-line pt-5">
+              <p className="font-semibold">Just trying it out?</p>
+              <p className="text-sm text-ink/65">Use a demo payment instead. No money is taken and your order goes straight to the kitchen.</p>
+              <button type="button" onClick={() => setDemoOpen(true)} className="btn btn-outline mt-3 w-full">
+                Use demo payment
+              </button>
+              <DemoPayment open={demoOpen} amount={upi.amount} onClose={() => setDemoOpen(false)} onPaid={demoPay} />
+            </div>
+          )}
         </div>
       )}
     </section>

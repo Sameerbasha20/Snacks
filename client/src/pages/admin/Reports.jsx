@@ -259,6 +259,11 @@ export default function Reports() {
             ))}
           </dl>
           {t.credit_used > 0 && <p className="mt-2 text-sm text-ink/65">Includes {money(t.credit_used)} paid with referral credit.</p>}
+          {t.demo_orders > 0 && (
+            <p className="mt-1 text-sm text-ink/65">
+              Not included: {t.demo_orders} demo-payment {t.demo_orders === 1 ? 'order' : 'orders'} worth {money(t.demo_value)}, where no money was taken.
+            </p>
+          )}
 
           {t.orders === 0 ? (
             <p className="mt-10 text-ink/70">No sales in these dates yet. Try a longer range.</p>

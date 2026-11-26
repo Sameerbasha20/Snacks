@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { randomBytes } from 'node:crypto';
 import QRCode from 'qrcode';
 import { getOrder, getSettings, listOrders, nowIso, one, q, tx } from '../db.js';
 import { ah, requireAuth, requireRole } from '../middleware/auth.js';
@@ -171,7 +172,7 @@ router.get(
     const settings = await getSettings();
     const link = upiLink(settings, order);
     const qr = await QRCode.toDataURL(link, { width: 480, margin: 1, color: { dark: '#1C1A17', light: '#FFFFFF' } });
-    res.json({ link, qr, upi_id: settings.upi_id, upi_name: settings.upi_name || settings.shop_name, amount: order.total });
+    res.json({ link, qr, upi_id: settings.upi_id, upi_name: settings.upi_name || settings.shop_name, amount: order.total, demo: settings.demo_payments });
   })
 );
 
@@ -196,6 +197,27 @@ router.post(
       [utr, nowIso(), order.id, PAYABLE]
     );
     if (!flipped) throw new HttpError(409, 'This order has already changed. Refresh to see its status.');
+    res.json(await getOrder(order.id));
+  })
+);
+
+// Demo payment (only while switched on in Settings): marks the order paid with no money taken.
+// Recorded as payment_method 'demo' so staff screens and reports can tell it apart from real UPI.
+router.post(
+  '/:id/demo-pay',
+  ah(async (req, res) => {
+    const order = await getOrder(req.params.id);
+    if (!order || order.user_id !== req.user.id) return res.status(404).json({ error: 'Order not found' });
+    if (!(await getSettings()).demo_payments) return res.status(403).json({ error: 'Demo payments are switched off. Please pay by UPI.' });
+    if (!PAYABLE.includes(order.payment_status) || order.status === 'cancelled') {
+      return res.status(400).json({ error: 'This order does not need paying.' });
+    }
+    const now = nowIso();
+    const ok = await one(
+      "UPDATE orders SET payment_status = 'paid', payment_method = 'demo', payment_ref = $1, amount_paid = total, paid_at = $2, updated_at = $2 WHERE id = $3 AND payment_status = ANY($4::text[]) AND status <> 'cancelled' RETURNING id",
+      [`DEMO-${randomBytes(4).toString('hex').toUpperCase()}`, now, order.id, PAYABLE]
+    );
+    if (!ok) throw new HttpError(409, 'This order has already changed. Refresh to see its status.');
     res.json(await getOrder(order.id));
   })
 );

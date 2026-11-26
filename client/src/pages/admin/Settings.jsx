@@ -72,6 +72,12 @@ export default function Settings() {
         <Row label="Name shown when paying" hint="Customers see this as who they're paying in their UPI app.">
           <input className="input" value={s.upi_name} onChange={set('upi_name')} />
         </Row>
+        <Row label="Allow demo payments" hint="Adds a 'Use demo payment' button next to UPI. No money is taken, so switch this off once you go live. Demo orders are marked DEMO and left out of sales reports.">
+          <label className="flex items-center gap-3">
+            <input type="checkbox" className="h-5 w-5 accent-[var(--color-ink)]" checked={!!s.demo_payments} onChange={(e) => setS({ ...s, demo_payments: e.target.checked })} />
+            <span className="font-semibold">{s.demo_payments ? 'On' : 'Off'}</span>
+          </label>
+        </Row>
         <div className="py-5">
           <button disabled={busy} className="btn btn-dark">
             Save settings

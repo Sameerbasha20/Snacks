@@ -319,7 +319,7 @@ export default function AdminOrders() {
                   <td className="num py-3.5 pr-4">
                     {money(o.total)}
                     <p className={`text-sm whitespace-nowrap ${NEEDS_ACTION.includes(o.payment_status) ? 'font-semibold text-saffron-deep' : 'text-ink/60'}`}>
-                      {PAY_SHORT[o.payment_status] ?? 'At reception'}
+                      {o.payment_method === 'demo' && o.payment_status === 'paid' ? 'Demo (no money)' : (PAY_SHORT[o.payment_status] ?? 'At reception')}
                     </p>
                   </td>
                   <td className="py-3.5 pr-4">

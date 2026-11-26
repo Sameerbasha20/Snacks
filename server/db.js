@@ -167,6 +167,8 @@ const DEFAULT_SETTINGS = {
   // Delivery SLA: minutes from 'cooked' to picked up, and from picked up to reception.
   sla_pickup_minutes: '10',
   sla_delivery_minutes: '15',
+  // Demo payments: customers can mark an order paid without paying (for trials). '0' turns it off.
+  demo_payments: '1',
 };
 
 /** Short, readable code like SAMEE7K2. Unique across users. */
@@ -283,6 +285,7 @@ export async function getSettings() {
     upi_name: s.upi_name || s.shop_name,
     sla_pickup_minutes: Number(s.sla_pickup_minutes),
     sla_delivery_minutes: Number(s.sla_delivery_minutes),
+    demo_payments: s.demo_payments === '1',
   };
 }
 

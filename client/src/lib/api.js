@@ -90,6 +90,7 @@ export function paymentText(o) {
     case 'verifying':
       return `Paid ${money(o.total)} by UPI, checking it arrived`;
     case 'paid':
+      if (o.payment_method === 'demo') return 'Demo payment, no money taken';
       return o.payment_method === 'credit' ? 'Paid with credit' : `Paid ${amt} by UPI`;
     case 'refund_due':
       return `Refund of ${amt} on its way`;

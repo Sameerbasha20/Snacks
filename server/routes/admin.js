@@ -142,6 +142,7 @@ router.put(
       }
     }
     if (b.upi_name !== undefined) b.upi_name = String(b.upi_name).trim().slice(0, 50);
+    if (b.demo_payments !== undefined) b.demo_payments = b.demo_payments === true || b.demo_payments === '1' ? '1' : '0';
     res.json(await setSettings(b));
   })
 );

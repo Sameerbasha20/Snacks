@@ -76,6 +76,9 @@ function OrderCard({ order, now, onMove, onPayment, fresh, sla }) {
           ))}
         </ul>
         {order.note && <p className="mt-3 rounded-md bg-paper/10 px-3 py-2 text-sm">Note: {order.note}</p>}
+        {order.payment_method === 'demo' && order.payment_status === 'paid' && (
+          <p className="mt-3 rounded-md border border-paper/30 px-3 py-2 text-sm font-semibold">DEMO payment: no money was received for this order.</p>
+        )}
 
         {unpaid ? (
           <div className="mt-4 rounded-md border border-saffron/60 p-3">

@@ -23,7 +23,7 @@ export async function buildReport(from, to, { withOrders = false } = {}) {
   for (let k = from; k <= to; k = nextDateKey(k)) days.set(k, { date: k, orders: 0, revenue: 0, items: 0, cancelled: 0 });
   const hours = new Map();
   const dishes = new Map();
-  const totals = { orders: 0, revenue: 0, items: 0, cancelled: 0, credit_used: 0, customers: new Set() };
+  const totals = { orders: 0, revenue: 0, items: 0, cancelled: 0, credit_used: 0, customers: new Set(), demo_orders: 0, demo_value: 0 };
 
   for (const o of orders) {
     const day = days.get(shopDateKey(new Date(o.pickup_time)));
@@ -31,6 +31,12 @@ export async function buildReport(from, to, { withOrders = false } = {}) {
     if (o.status === 'cancelled') {
       day.cancelled++;
       totals.cancelled++;
+      continue;
+    }
+    // Demo payments brought in no money: keep them out of sales, count them separately.
+    if (o.payment_method === 'demo') {
+      totals.demo_orders++;
+      totals.demo_value += o.total;
       continue;
     }
     const qty = o.items.reduce((s, i) => s + i.qty, 0);
@@ -79,6 +85,8 @@ export async function buildReport(from, to, { withOrders = false } = {}) {
       credit_used: round(totals.credit_used),
       customers: totals.customers.size,
       avg_order: totals.orders ? round(totals.revenue / totals.orders) : 0,
+      demo_orders: totals.demo_orders,
+      demo_value: round(totals.demo_value),
     },
     days: [...days.values()].map((d) => ({ ...d, revenue: round(d.revenue) })),
     hours: [...hours.values()].sort((a, b) => a.hour - b.hour).map((h) => ({ ...h, revenue: round(h.revenue) })),
@@ -187,6 +195,7 @@ export async function reportWorkbook(r) {
     ['Customers', r.totals.customers],
     ['Cancelled orders', r.totals.cancelled],
     ['Referral credit used', r.totals.credit_used],
+    ['Demo-payment orders (not in revenue)', r.totals.demo_orders],
   ]);
   summary.getRow(1).font = { bold: true, size: 14 };
   for (const n of [7, 8, 12]) summary.getCell(`B${n}`).numFmt = RUPEES;
