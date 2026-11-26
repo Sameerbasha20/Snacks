@@ -23,6 +23,7 @@ import MenuManager from './pages/admin/MenuManager';
 import Settings from './pages/admin/Settings';
 import Staff from './pages/admin/Staff';
 import QrCode from './pages/admin/QrCode';
+import DeliveryBoard from './pages/delivery/DeliveryBoard';
 
 export default function App() {
   const location = useLocation();
@@ -48,6 +49,7 @@ export default function App() {
           <Route path="/orders" element={<Protected roles={['user']}><Page><MyOrders /></Page></Protected>} />
           <Route path="/rewards" element={<Protected roles={['user']}><Page><Rewards /></Page></Protected>} />
           <Route path="/orders/:id" element={<Protected><Page><OrderTrack /></Page></Protected>} />
+          <Route path="/delivery" element={<Protected roles={['delivery', 'admin']}><Page><DeliveryBoard /></Page></Protected>} />
           <Route path="/kitchen" element={<Protected roles={['kitchen', 'admin']}><Page><KitchenBoard /></Page></Protected>} />
           <Route path="/admin" element={<Protected roles={['admin']}><Page><AdminLayout /></Page></Protected>}>
             <Route index element={<Dashboard />} />

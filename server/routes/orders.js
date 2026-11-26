@@ -4,13 +4,13 @@ import { getOrder, getSettings, listOrders, nowIso, one, q, tx } from '../db.js'
 import { ah, requireAuth, requireRole } from '../middleware/auth.js';
 import { notifyReady } from '../push.js';
 import { startOfShopDay } from '../time.js';
-import { HttpError, KITCHEN_TRANSITIONS, USER_CANCELLABLE, parseDate, priceItems, replaceOrderItems, validatePickup } from '../orderRules.js';
+import { HttpError, STATUS_STAMPS, USER_CANCELLABLE, allowedNext, parseDate, priceItems, replaceOrderItems, validatePickup } from '../orderRules.js';
 import { addCredit, creditBalance, refundOnCancel, rewardReferrer } from '../rewards.js';
 
 const router = Router();
 router.use(requireAuth);
 
-const isStaff = (u) => u.role === 'kitchen' || u.role === 'admin';
+const isStaff = (u) => ['kitchen', 'admin', 'delivery'].includes(u.role);
 const round = (n) => Math.round(n * 100) / 100;
 
 /*
@@ -104,6 +104,21 @@ router.get(
   requireRole('kitchen', 'admin'),
   ah(async (req, res) => {
     res.json(await listOrders("o.status NOT IN ('collected','cancelled') OR o.updated_at >= $1", [startOfShopDay().toISOString()], 'o.pickup_time ASC'));
+  })
+);
+
+// Delivery partner's view: what's cooking next, what's waiting at the kitchen, on the way, at reception; plus today's handovers.
+router.get(
+  '/delivery',
+  requireRole('delivery', 'admin'),
+  ah(async (req, res) => {
+    const orders = await listOrders(
+      "o.status IN ('preparing','cooked','on_the_way','ready') OR (o.status = 'collected' AND o.updated_at >= $1)",
+      [startOfShopDay().toISOString()],
+      'o.pickup_time ASC'
+    );
+    // Delivery only needs a name and phone to hand food over at reception.
+    res.json(orders.map(({ customer_email, ...o }) => o));
   })
 );
 
@@ -245,26 +260,33 @@ router.post(
   })
 );
 
-// Kitchen moves an order through the workflow
+// Kitchen and delivery move an order through the workflow (each role only its own steps).
 router.patch(
   '/:id/status',
-  requireRole('kitchen', 'admin'),
+  requireRole('kitchen', 'admin', 'delivery'),
   ah(async (req, res) => {
     const order = await getOrder(req.params.id);
     if (!order) throw new HttpError(404, 'Order not found');
     const target = String(req.body.status || '');
-    if (!KITCHEN_TRANSITIONS[order.status]?.includes(target)) {
+    if (!allowedNext(req.user.role, order.status).includes(target)) {
       throw new HttpError(400, `Cannot move order from ${order.status} to ${target}`);
     }
     if (order.status === 'placed' && PAYABLE.includes(order.payment_status)) {
       throw new HttpError(409, 'Confirm the UPI payment before you start cooking this order.');
     }
     const now = nowIso();
-    let extra = '';
-    if (target === 'ready') extra = ', ready_at = $2';
-    if (target === 'collected') extra = ', collected_at = $2';
+    const stamp = STATUS_STAMPS[target];
+    const sets = ['status = $1', 'updated_at = $2'];
+    const params = [target, now, order.id, order.status];
+    if (stamp?.at) sets.push(`${stamp.at} = $2`);
+    if (stamp?.by) {
+      params.push(req.user.id);
+      sets.push(`${stamp.by} = $${params.length}`);
+    }
     await tx(async (client) => {
-      await client.query(`UPDATE orders SET status = $1, updated_at = $2${extra} WHERE id = $3`, [target, now, order.id]);
+      // Only moves if nobody else moved it first (two partners tapping "Picked up" at once).
+      const moved = await one(`UPDATE orders SET ${sets.join(', ')} WHERE id = $3 AND status = $4 RETURNING id`, params, client);
+      if (!moved) throw new HttpError(409, 'Someone else just updated this order. Refresh to see where it is.');
       if (target === 'collected') await rewardReferrer(client, order);
     });
     const updated = await getOrder(order.id);

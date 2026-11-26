@@ -63,7 +63,9 @@ export const STATUS_META = {
   placed: { label: 'Received by the kitchen', short: 'Received', color: 'border border-ink/25 text-ink' },
   accepted: { label: 'Accepted by the kitchen', short: 'Accepted', color: 'border border-ink/25 text-ink' },
   preparing: { label: 'Being cooked', short: 'Cooking', color: 'bg-ink text-paper' },
-  ready: { label: 'Ready to collect', short: 'Ready', color: 'bg-saffron text-ink' },
+  cooked: { label: 'Cooked, waiting for pickup at the kitchen', short: 'Cooked', color: 'bg-ink text-paper' },
+  on_the_way: { label: 'On the way to reception', short: 'On the way', color: 'bg-ink text-paper' },
+  ready: { label: 'Ready at reception', short: 'At reception', color: 'bg-saffron text-ink' },
   collected: { label: 'Collected', short: 'Collected', color: 'text-muted' },
   cancelled: { label: 'Cancelled', short: 'Cancelled', color: 'text-muted line-through' },
 };
@@ -98,7 +100,7 @@ export function paymentText(o) {
     case 'void':
       return 'Not paid';
     default:
-      return 'Pay at the counter';
+      return 'Pay at reception';
   }
 }
 

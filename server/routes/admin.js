@@ -13,8 +13,8 @@ import { buildReport, reportWorkbook } from '../reports.js';
 const router = Router();
 router.use(requireAuth, requireRole('admin'));
 
-const STATUSES = ['placed', 'accepted', 'preparing', 'ready', 'collected', 'cancelled'];
-const EDITABLE = ['pickup_time', 'cancel_deadline', 'note', 'status', 'cancelled_at', 'cancelled_by', 'ready_at', 'collected_at', 'total', 'subtotal', 'payment_status', 'updated_at'];
+const STATUSES = ['placed', 'accepted', 'preparing', 'cooked', 'on_the_way', 'ready', 'collected', 'cancelled'];
+const EDITABLE = ['pickup_time', 'cancel_deadline', 'note', 'status', 'cancelled_at', 'cancelled_by', 'cooked_at', 'picked_up_at', 'ready_at', 'collected_at', 'total', 'subtotal', 'payment_status', 'updated_at'];
 
 router.get(
   '/orders',
@@ -68,6 +68,8 @@ router.put(
         fields.cancelled_at = now;
         fields.cancelled_by = 'admin';
       }
+      if (b.status === 'cooked' && !order.cooked_at) fields.cooked_at = now;
+      if (b.status === 'on_the_way' && !order.picked_up_at) fields.picked_up_at = now;
       if (b.status === 'ready' && order.status !== 'ready') fields.ready_at = now;
       if (b.status === 'collected' && order.status !== 'collected') fields.collected_at = now;
     }
@@ -102,7 +104,7 @@ router.get(
     const [today, revenue, active, ready, customers, topItems] = await Promise.all([
       one('SELECT COUNT(*)::int AS c FROM orders WHERE created_at >= $1', [since]),
       one("SELECT COALESCE(SUM(total), 0) AS s FROM orders WHERE created_at >= $1 AND status != 'cancelled'", [since]),
-      one("SELECT COUNT(*)::int AS c FROM orders WHERE status IN ('placed','accepted','preparing')"),
+      one("SELECT COUNT(*)::int AS c FROM orders WHERE status IN ('placed','accepted','preparing','cooked','on_the_way')"),
       one("SELECT COUNT(*)::int AS c FROM orders WHERE status = 'ready'"),
       one("SELECT COUNT(*)::int AS c FROM users WHERE role = 'user'"),
       q(`SELECT oi.name_snapshot AS name, SUM(oi.qty)::int AS qty FROM order_items oi
@@ -128,7 +130,7 @@ router.put(
     const t = /^\d{2}:\d{2}$/;
     if (b.open_time && !t.test(b.open_time)) return res.status(400).json({ error: 'Invalid opening time' });
     if (b.close_time && !t.test(b.close_time)) return res.status(400).json({ error: 'Invalid closing time' });
-    for (const k of ['min_lead_minutes', 'default_cancel_before_minutes', 'referral_amount']) {
+    for (const k of ['min_lead_minutes', 'default_cancel_before_minutes', 'referral_amount', 'sla_pickup_minutes', 'sla_delivery_minutes']) {
       if (b[k] !== undefined && (!Number.isFinite(Number(b[k])) || Number(b[k]) < 0)) {
         return res.status(400).json({ error: `Invalid ${k.replaceAll('_', ' ')}` });
       }
@@ -148,7 +150,7 @@ router.put(
 router.get(
   '/users',
   ah(async (req, res) => {
-    const role = ['user', 'kitchen', 'admin'].includes(req.query.role) ? req.query.role : null;
+    const role = ['user', 'kitchen', 'delivery', 'admin'].includes(req.query.role) ? req.query.role : null;
     res.json(
       await q(`SELECT id, name, email, phone, role, created_at FROM users ${role ? 'WHERE role = $1' : ''} ORDER BY role, name`, role ? [role] : [])
     );
@@ -163,7 +165,7 @@ router.post(
     const phone = String(req.body.phone || '').trim();
     const password = String(req.body.password || '');
     const role = req.body.role;
-    if (!['kitchen', 'admin'].includes(role)) return res.status(400).json({ error: 'Role must be kitchen or admin' });
+    if (!['kitchen', 'delivery', 'admin'].includes(role)) return res.status(400).json({ error: 'Role must be kitchen, delivery or admin' });
     if (!name || !email.includes('@') || password.length < 6) {
       return res.status(400).json({ error: 'Name, a valid email and a password of 6+ characters are required' });
     }

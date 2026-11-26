@@ -6,12 +6,13 @@ import { api, fmtDay, fmtTime, money, PAYMENT_PENDING, relative } from '../../li
 import { useSocketEvent, wakeSocket } from '../../lib/socket';
 import { chime } from '../../lib/notify';
 import { useNow } from '../../components/CancelCountdown';
+import { useSettings } from '../../lib/slots';
 
 // The kitchen screen is dark: it runs on a tablet in a bright kitchen and must read at a glance.
 const COLUMNS = [
   { id: 'new', title: 'New', statuses: ['placed', 'accepted'], empty: 'No new orders.' },
   { id: 'cooking', title: 'Cooking', statuses: ['preparing'], empty: 'Nothing on the stove.' },
-  { id: 'ready', title: 'Ready for pickup', statuses: ['ready'], empty: 'Nothing waiting at the counter.' },
+  { id: 'cooked', title: 'Waiting for delivery pickup', statuses: ['cooked'], empty: 'Nothing waiting to be picked up.' },
 ];
 
 const ACTIONS = {
@@ -20,19 +21,22 @@ const ACTIONS = {
     { to: 'preparing', label: 'Start cooking', cls: 'bg-paper text-ink hover:bg-white' },
   ],
   accepted: [{ to: 'preparing', label: 'Start cooking', cls: 'bg-paper text-ink hover:bg-white' }],
-  preparing: [{ to: 'ready', label: 'Mark ready', cls: 'bg-saffron text-ink hover:bg-saffron-deep' }],
-  ready: [{ to: 'collected', label: 'Collected', cls: 'border-[1.5px] border-paper/40 text-paper hover:border-paper' }],
+  preparing: [{ to: 'cooked', label: 'Cooked, ready for pickup', cls: 'bg-saffron text-ink hover:bg-saffron-deep' }],
 };
 
-function OrderCard({ order, now, onMove, onPayment, fresh }) {
+function OrderCard({ order, now, onMove, onPayment, fresh, sla }) {
   const unpaid = order.status !== 'cancelled' && PAYMENT_PENDING.includes(order.payment_status);
-  const minsLeft = (new Date(order.pickup_time).getTime() - now) / 60000;
-  const waiting = order.status !== 'ready';
-  const late = waiting && minsLeft < 0;
-  const soon = waiting && !late && minsLeft < 20;
+  const cooked = order.status === 'cooked';
+  // Food must reach reception by the customer's time, so it has to be cooked early enough for pickup and the trip.
+  const cookBy = new Date(new Date(order.pickup_time).getTime() - (sla.pickup + sla.delivery) * 60000).toISOString();
+  const minsLeft = (new Date(cookBy).getTime() - now) / 60000;
+  const waitingMins = cooked && order.cooked_at ? Math.floor((now - new Date(order.cooked_at).getTime()) / 60000) : 0;
+  const late = cooked ? waitingMins > sla.pickup : minsLeft < 0;
+  const soon = !cooked && !late && minsLeft < 20;
 
-  let timing = relative(order.pickup_time, now);
-  if (late) timing = `Late by ${relative(order.pickup_time, now).replace(' ago', '')}`;
+  let timing = cooked ? `Cooked ${waitingMins} min ago` : `Cook by ${fmtTime(cookBy)}, ${relative(cookBy, now)}`;
+  if (late && !cooked) timing = `Cook by ${fmtTime(cookBy)}, late by ${relative(cookBy, now).replace(' ago', '')}`;
+  if (late && cooked) timing = `Waiting ${waitingMins} min, pickup target is ${sla.pickup}`;
 
   return (
     <motion.article
@@ -42,7 +46,7 @@ function OrderCard({ order, now, onMove, onPayment, fresh }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96 }}
       transition={{ type: 'spring', damping: 26, stiffness: 260 }}
-      className={`relative rounded-lg bg-[#2a2723] p-4 ${order.status === 'ready' ? 'ring-2 ring-saffron' : ''} ${late ? 'ring-2 ring-paper' : ''}`}
+      className={`relative rounded-lg bg-[#2a2723] p-4 ${late ? 'ring-2 ring-saffron' : ''}`}
     >
       {fresh && <motion.span className="absolute inset-0 rounded-lg bg-saffron/25" initial={{ opacity: 1 }} animate={{ opacity: 0 }} transition={{ duration: 3 }} />}
       <div className="relative">
@@ -52,7 +56,8 @@ function OrderCard({ order, now, onMove, onPayment, fresh }) {
             <p className="font-semibold text-paper/85">{order.customer_name}</p>
           </div>
           <div className="text-right">
-            <p className="num text-2xl font-extrabold">{fmtTime(order.pickup_time)}</p>
+            <p className="text-xs text-paper/55">At reception by</p>
+            <p className="num text-2xl leading-tight font-extrabold">{fmtTime(order.pickup_time)}</p>
             <p className={`text-sm font-semibold ${late ? 'text-saffron' : soon ? 'text-paper' : 'text-paper/55'}`}>
               {fmtDay(order.pickup_time) === 'Today' ? timing : fmtDay(order.pickup_time)}
             </p>
@@ -111,6 +116,8 @@ export default function KitchenBoard() {
   const [orders, setOrders] = useState(null);
   const [fresh, setFresh] = useState(new Set());
   const now = useNow(15000);
+  const settings = useSettings();
+  const sla = { pickup: settings?.sla_pickup_minutes ?? 10, delivery: settings?.sla_delivery_minutes ?? 15 };
 
   useEffect(() => {
     api('/orders/kitchen')
@@ -168,7 +175,7 @@ export default function KitchenBoard() {
     upsert({ ...order, status: to }); // optimistic, so the card moves immediately
     try {
       upsert(await api(`/orders/${order.id}/status`, { method: 'PATCH', body: { status: to } }));
-      if (to === 'ready') toast.success(`Customer alerted: order ${order.id} is ready`);
+      if (to === 'cooked') toast.success(`Order ${order.id} is waiting for the delivery partner`);
     } catch (e) {
       upsert(order);
       toast.error(e.message);
@@ -176,7 +183,8 @@ export default function KitchenBoard() {
   };
 
   const sorted = useMemo(() => [...(orders || [])].sort((a, b) => new Date(a.pickup_time) - new Date(b.pickup_time)), [orders]);
-  const done = sorted.filter((o) => ['collected', 'cancelled'].includes(o.status));
+  // Everything that has left the kitchen (or was cancelled) goes in the finished list.
+  const done = sorted.filter((o) => ['on_the_way', 'ready', 'collected', 'cancelled'].includes(o.status));
 
   return (
     <div className="min-h-[calc(100dvh-4rem)] bg-ink text-paper">
@@ -211,7 +219,7 @@ export default function KitchenBoard() {
                     <div className="space-y-3">
                       <AnimatePresence mode="popLayout">
                         {list.map((o) => (
-                          <OrderCard key={o.id} order={o} now={now} onMove={move} onPayment={payment} fresh={fresh.has(o.id)} />
+                          <OrderCard key={o.id} order={o} now={now} sla={sla} onMove={move} onPayment={payment} fresh={fresh.has(o.id)} />
                         ))}
                       </AnimatePresence>
                       {list.length === 0 && <p className="py-8 text-center text-sm text-paper/40">{col.empty}</p>}

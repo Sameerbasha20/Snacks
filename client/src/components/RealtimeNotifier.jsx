@@ -25,13 +25,13 @@ export default function RealtimeNotifier() {
         >
           <b>Order {order.id} is ready</b>
           <br />
-          <span className="text-sm">Collect it from the counter.</span>
+          <span className="text-sm">Collect it from reception.</span>
         </button>
       ),
       { duration: 12000, style: { background: '#E8772E', color: '#1C1A17' } }
     );
     if (document.hidden) {
-      showLocalNotification(`Order ${order.id} is ready`, 'Collect it from the counter.', `/orders/${order.id}`, `order-${order.id}`);
+      showLocalNotification(`Order ${order.id} is ready`, 'Collect it from reception.', `/orders/${order.id}`, `order-${order.id}`);
     }
   });
 

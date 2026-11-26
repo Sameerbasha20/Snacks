@@ -46,4 +46,5 @@ export function AuthProvider({ children }) {
 
 export const useAuth = () => useContext(AuthCtx);
 
-export const homeFor = (user) => (user?.role === 'admin' ? '/admin' : user?.role === 'kitchen' ? '/kitchen' : '/menu');
+const HOME = { admin: '/admin', kitchen: '/kitchen', delivery: '/delivery' };
+export const homeFor = (user) => HOME[user?.role] ?? '/menu';

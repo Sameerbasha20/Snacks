@@ -60,6 +60,12 @@ export default function Settings() {
         <Row label="Referral reward (₹)" hint="A new customer gets this much credit when they sign up with a friend's code. The friend gets the same once that customer collects their first order.">
           <input className="input" type="number" min="0" value={s.referral_amount} onChange={set('referral_amount')} />
         </Row>
+        <Row label="Delivery: pick up within (minutes)" hint="Target time for a delivery partner to collect an order after the kitchen marks it cooked.">
+          <input className="input" type="number" min="1" value={s.sla_pickup_minutes} onChange={set('sla_pickup_minutes')} />
+        </Row>
+        <Row label="Delivery: reach reception within (minutes)" hint="Target time from pickup at the kitchen to arriving at reception. The kitchen's cook-by time allows for both targets.">
+          <input className="input" type="number" min="1" value={s.sla_delivery_minutes} onChange={set('sla_delivery_minutes')} />
+        </Row>
         <Row label="UPI ID" hint="Customers pay this UPI ID for every order. Check each payment arrived before the kitchen starts cooking.">
           <input className="input num" autoComplete="off" spellCheck={false} value={s.upi_id} onChange={set('upi_id')} />
         </Row>

@@ -102,14 +102,39 @@ export async function replaceOrderItems(client, orderId, lines) {
   }
 }
 
-// Kitchen workflow: allowed next statuses from each status.
+/*
+ * Order journey. The kitchen is away from the office, so:
+ *   kitchen:  placed -> accepted -> preparing -> cooked (waiting at the kitchen)
+ *   delivery: cooked -> on_the_way (picked up) -> ready (at reception) -> collected (handed to the customer)
+ * "ready" keeps meaning "the customer can collect it now"; that's when the customer is alerted.
+ */
 export const KITCHEN_TRANSITIONS = {
   placed: ['accepted', 'preparing'],
   accepted: ['preparing'],
-  preparing: ['ready'],
+  preparing: ['cooked'],
+};
+export const DELIVERY_TRANSITIONS = {
+  cooked: ['on_the_way'],
+  on_the_way: ['ready'],
   ready: ['collected'],
-  collected: [],
-  cancelled: [],
+};
+
+/** Next statuses this role may set from `status`. Admin can do both jobs. */
+export function allowedNext(role, status) {
+  const k = KITCHEN_TRANSITIONS[status] || [];
+  const d = DELIVERY_TRANSITIONS[status] || [];
+  if (role === 'kitchen') return k;
+  if (role === 'delivery') return d;
+  if (role === 'admin') return [...k, ...d];
+  return [];
+}
+
+/** Timestamp (and who did it) recorded when an order enters each status. */
+export const STATUS_STAMPS = {
+  cooked: { at: 'cooked_at' },
+  on_the_way: { at: 'picked_up_at', by: 'picked_up_by' },
+  ready: { at: 'ready_at', by: 'delivered_by' },
+  collected: { at: 'collected_at' },
 };
 
 export const USER_CANCELLABLE = ['placed', 'accepted'];

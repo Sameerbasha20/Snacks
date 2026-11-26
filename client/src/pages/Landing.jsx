@@ -10,7 +10,7 @@ const EASE = [0.22, 1, 0.36, 1];
 const STEPS = [
   ['Choose your food', 'Browse the menu and add what you want to your cart.'],
   ['Pick a pickup time', 'Any slot at least an hour from now, so we can cook it fresh.'],
-  ['Collect it hot', "We'll send you an alert the moment it's ready at the counter."],
+  ['Collect it from reception', "We'll send you an alert the moment it arrives at reception."],
 ];
 
 /** The hero's focal point: the real earliest pickup time, worked out from opening hours and lead time. */
@@ -138,7 +138,7 @@ function Hero({ ctaTo }) {
             transition={{ delay: 0.25, duration: 0.6 }}
             className="mt-6 max-w-md text-lg text-ink/75"
           >
-            Plus pizzas, sandwiches, samosas and puffs. Order on your phone an hour ahead and it's hot at the counter when you arrive.
+            Plus pizzas, sandwiches, samosas and puffs. Order on your phone an hour ahead and it's waiting at reception, hot, when you come down.
           </motion.p>
           <div className="mt-8 max-w-md">
             <PickupTicket ctaTo={ctaTo} />
@@ -320,7 +320,7 @@ export default function Landing() {
       <CookedToOrder settings={settings} />
       <footer className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-10 text-sm text-muted sm:flex-row sm:justify-between sm:px-6">
         <p>© {new Date().getFullYear()} Snack Shack</p>
-        <p>Scan the QR code at the counter to order from your phone.</p>
+        <p>Scan the QR code at reception to order from your phone.</p>
       </footer>
     </div>
   );

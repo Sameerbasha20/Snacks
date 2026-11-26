@@ -7,7 +7,7 @@ import { QtyStepper } from '../../components/CartDrawer';
 import { StatusBadge } from '../../components/Brand';
 import Icon from '../../components/Icon';
 
-const FILTERS = ['all', 'placed', 'accepted', 'preparing', 'ready', 'collected', 'cancelled'];
+const FILTERS = ['all', 'placed', 'accepted', 'preparing', 'cooked', 'on_the_way', 'ready', 'collected', 'cancelled'];
 
 const PAY_SHORT = {
   awaiting: 'Not paid yet',
@@ -186,8 +186,8 @@ function EditOrder({ order, onClose, onSaved }) {
               <p className="font-semibold">New total {money(newTotal)}</p>
               <p className="text-sm text-ink/65">
                 {paymentText(order)}
-                {diff > 0 && <>. Collect {money(diff)} more at the counter.</>}
-                {diff < 0 && <>. Give back {money(-diff)} at the counter.</>}
+                {diff > 0 && <>. Collect {money(diff)} more at reception.</>}
+                {diff < 0 && <>. Give back {money(-diff)} at reception.</>}
               </p>
             </div>
           );
@@ -319,7 +319,7 @@ export default function AdminOrders() {
                   <td className="num py-3.5 pr-4">
                     {money(o.total)}
                     <p className={`text-sm whitespace-nowrap ${NEEDS_ACTION.includes(o.payment_status) ? 'font-semibold text-saffron-deep' : 'text-ink/60'}`}>
-                      {PAY_SHORT[o.payment_status] ?? 'At counter'}
+                      {PAY_SHORT[o.payment_status] ?? 'At reception'}
                     </p>
                   </td>
                   <td className="py-3.5 pr-4">

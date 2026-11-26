@@ -11,7 +11,8 @@ import Icon from './Icon';
 function linksFor(role) {
   if (role === 'user') return [['/menu', 'Menu'], ['/orders', 'My orders'], ['/rewards', 'Rewards']];
   if (role === 'kitchen') return [['/kitchen', 'Kitchen']];
-  if (role === 'admin') return [['/admin', 'Admin'], ['/kitchen', 'Kitchen']];
+  if (role === 'delivery') return [['/delivery', 'Deliveries']];
+  if (role === 'admin') return [['/admin', 'Admin'], ['/kitchen', 'Kitchen'], ['/delivery', 'Deliveries']];
   return [];
 }
 

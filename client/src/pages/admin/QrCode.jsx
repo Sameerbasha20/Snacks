@@ -35,7 +35,7 @@ export default function QrCode() {
       .foot{display:flex;justify-content:space-between;border-top:2px solid #1C1A17;padding-top:14px;font-weight:800}
       .foot span:last-child{color:#E8772E}</style></head>
       <body><div class="sheet"><h1>Order before you queue.</h1>
-      <p>Scan to order from your phone. Pick a time and collect it hot from this counter.</p>
+      <p>Scan to order from your phone. Pick a time and collect it hot from reception.</p>
       <div class="qr"><img src="${qr.dataUrl}" alt=""></div>
       <div class="foot"><span>${esc(qr.shop_name)}</span><span>Order 1 hour ahead</span></div></div>
       </body></html>`;
@@ -50,7 +50,7 @@ export default function QrCode() {
     <div>
       <h1 className="text-4xl">QR code</h1>
       <p className="mt-2 max-w-xl text-ink/70">
-        Print it and put it at the counter. Scanning it opens this website. Phones must be able to reach the address below: your shop Wi-Fi address while
+        Print it and put it up at reception. Scanning it opens this website. Phones must be able to reach the address below: your shop Wi-Fi address while
         testing, or your own domain once the site is online.
       </p>
 

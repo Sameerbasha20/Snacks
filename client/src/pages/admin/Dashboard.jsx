@@ -11,7 +11,7 @@ export default function Dashboard() {
   const load = () => {
     api('/admin/stats').then(setStats).catch(() => {});
     api('/orders/kitchen')
-      .then((o) => setUpcoming(o.filter((x) => ['placed', 'accepted', 'preparing', 'ready'].includes(x.status)).slice(0, 6)))
+      .then((o) => setUpcoming(o.filter((x) => ['placed', 'accepted', 'preparing', 'cooked', 'on_the_way', 'ready'].includes(x.status)).slice(0, 6)))
       .catch(() => {});
   };
   useEffect(load, []);
@@ -23,7 +23,7 @@ export default function Dashboard() {
         ['Orders today', stats.todayOrders],
         ['Takings today', money(stats.todayRevenue)],
         ['In the kitchen', stats.active],
-        ['Waiting at counter', stats.ready],
+        ['Waiting at reception', stats.ready],
       ]
     : [];
 

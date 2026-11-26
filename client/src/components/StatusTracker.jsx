@@ -5,13 +5,15 @@ const STEPS = [
   { id: 'placed', label: 'Received', hint: 'The kitchen has your order.' },
   { id: 'accepted', label: 'Accepted', hint: 'Confirmed and scheduled for your pickup time.' },
   { id: 'preparing', label: 'Cooking', hint: 'Being made fresh right now.' },
-  { id: 'ready', label: 'Ready to collect', hint: 'Waiting for you at the counter.' },
+  { id: 'on_the_way', label: 'On the way to reception', hint: 'Cooked and being brought over from the kitchen.' },
+  { id: 'ready', label: 'Ready at reception', hint: 'Waiting for you at reception.' },
 ];
-const ORDER = ['placed', 'accepted', 'preparing', 'ready', 'collected'];
+// Where each status sits on the timeline ("cooked" and "on the way" share a step).
+const POSITION = { placed: 0, accepted: 1, preparing: 2, cooked: 3, on_the_way: 3, ready: 4, collected: 4 };
 
 /** Vertical timeline of the order's progress. */
 export default function StatusTracker({ status }) {
-  const idx = Math.min(ORDER.indexOf(status), 3);
+  const idx = POSITION[status] ?? 0;
 
   return (
     <ol className="relative">

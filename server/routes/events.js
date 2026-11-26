@@ -12,6 +12,9 @@ import { ah, requireAuth } from '../middleware/auth.js';
  */
 const router = Router();
 const MAX_GAP_MS = 30 * 60_000; // staff poll every 10 min when quiet; keep a margin so no change is skipped
+// Statuses that mean "there's work for you" for each staff role.
+const KITCHEN_WATCH = ['placed', 'accepted', 'preparing', 'cooked'];
+const DELIVERY_WATCH = ['preparing', 'cooked', 'on_the_way', 'ready'];
 
 router.get(
   '/',
@@ -24,7 +27,8 @@ router.get(
     if (Number.isNaN(since.getTime()) || since < oldest) since = oldest;
     const from = new Date(since.getTime() - 3000).toISOString();
 
-    const staff = req.user.role === 'kitchen' || req.user.role === 'admin';
+    const staff = ['kitchen', 'admin', 'delivery'].includes(req.user.role);
+    const watch = { kitchen: KITCHEN_WATCH, delivery: DELIVERY_WATCH, admin: [...KITCHEN_WATCH, ...DELIVERY_WATCH] }[req.user.role];
     const recent = new Date(now.getTime() - 3 * 3600_000).toISOString();
     const [orders, active] = await Promise.all([
       staff
@@ -32,7 +36,7 @@ router.get(
         : listOrders('o.user_id = $1 AND o.updated_at > $2', [req.user.id, from], 'o.updated_at ASC'),
       staff
         ? // Something for the kitchen to act on (orders long past pickup don't count, so a forgotten one can't keep it busy).
-          one("SELECT EXISTS (SELECT 1 FROM orders WHERE status IN ('placed','accepted','preparing','ready') AND pickup_time > $1) AS a", [recent])
+          one('SELECT EXISTS (SELECT 1 FROM orders WHERE status = ANY($1::text[]) AND pickup_time > $2) AS a', [watch, recent])
         : one("SELECT EXISTS (SELECT 1 FROM orders WHERE user_id = $1 AND status NOT IN ('collected','cancelled') AND pickup_time > $2) AS a", [
             req.user.id,
             recent,
@@ -40,7 +44,9 @@ router.get(
     ]);
 
     res.set('Cache-Control', 'no-store');
-    res.json({ now: now.toISOString(), orders, active: active.a });
+    // Delivery partners get a name and phone for the handover, not the customer's email.
+    const out = req.user.role === 'delivery' ? orders.map(({ customer_email, ...o }) => o) : orders;
+    res.json({ now: now.toISOString(), orders: out, active: active.a });
   })
 );
 

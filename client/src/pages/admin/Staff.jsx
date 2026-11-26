@@ -5,7 +5,7 @@ import { useAuth } from '../../lib/auth';
 import Modal from '../../components/Modal';
 
 const EMPTY = { name: '', email: '', phone: '', password: '', role: 'kitchen' };
-const ROLE_LABEL = { kitchen: 'Kitchen', admin: 'Admin' };
+const ROLE_LABEL = { kitchen: 'Kitchen', delivery: 'Delivery', admin: 'Admin' };
 
 export default function Staff() {
   const { user } = useAuth();
@@ -96,12 +96,12 @@ export default function Staff() {
           <h2 className="text-xl">Add a team member</h2>
           <fieldset>
             <legend className="label">Role</legend>
-            <div className="grid grid-cols-2 gap-2">
-              {['kitchen', 'admin'].map((r) => (
+            <div className="grid grid-cols-3 gap-2">
+              {['kitchen', 'delivery', 'admin'].map((r) => (
                 <label key={r} className={`cursor-pointer rounded-lg border-[1.5px] p-3 ${form.role === r ? 'border-ink' : 'border-line'}`}>
                   <input type="radio" name="role" value={r} checked={form.role === r} onChange={set('role')} className="sr-only" />
                   <span className="block font-semibold">{ROLE_LABEL[r]}</span>
-                  <span className="block text-xs text-ink/60">{r === 'kitchen' ? 'Kitchen screen only' : 'Everything'}</span>
+                  <span className="block text-xs text-ink/60">{{ kitchen: 'Kitchen screen only', delivery: 'Delivery screen only', admin: 'Everything' }[r]}</span>
                 </label>
               ))}
             </div>

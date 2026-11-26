@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { api, download, money } from '../../lib/api';
+import { api, download, fmtTime, money } from '../../lib/api';
 import { RatingBadge } from '../../components/Stars';
 import Icon from '../../components/Icon';
 import { Spinner } from '../../components/AuthShell';
@@ -113,10 +113,9 @@ function BarChart({ data, value, xLabel, tip, format, labelEvery = 1, title, int
   );
 }
 
-function DataTable({ head, rows }) {
-  return (
-    <details className="mt-3 text-sm">
-      <summary className="cursor-pointer text-ink/65 hover:text-ink">Show as a table</summary>
+/** A plain table. Collapsed behind "Show as a table" when it repeats a chart; `open` when the table is the content. */
+function DataTable({ head, rows, open = false }) {
+  const table = (
       <table className="num mt-2 w-full text-left">
         <thead className="border-b border-ink text-ink/65">
           <tr>
@@ -139,6 +138,12 @@ function DataTable({ head, rows }) {
           ))}
         </tbody>
       </table>
+  );
+  if (open) return <div className="mt-1 overflow-x-auto text-sm">{table}</div>;
+  return (
+    <details className="mt-3 text-sm">
+      <summary className="cursor-pointer text-ink/65 hover:text-ink">Show as a table</summary>
+      {table}
     </details>
   );
 }
@@ -325,10 +330,74 @@ export default function Reports() {
                   </tbody>
                 </table>
               </section>
+
+              <DeliverySla sla={report.sla} />
             </>
           )}
         </>
       )}
     </div>
+  );
+}
+
+const pctText = (v) => (v == null ? '–' : `${v}%`);
+const minText = (v) => (v == null ? '–' : `${v} min`);
+
+/** How the kitchen-to-reception handover is doing against the targets in Settings. */
+function DeliverySla({ sla }) {
+  if (!sla) return null;
+  const t = sla.targets;
+  return (
+    <section className="mt-12">
+      <h2 className="text-xl">Delivery SLA</h2>
+      <p className="mt-1 text-sm text-ink/65">
+        Targets: picked up within {t.pickup} min of cooking, at reception within {t.delivery} min of pickup, and there before the customer's time. Change them in
+        Opening hours &amp; rules.
+      </p>
+      {sla.delivered === 0 ? (
+        <p className="mt-4 text-ink/70">No orders have gone through delivery in these dates yet.</p>
+      ) : (
+        <>
+          <dl className="mt-4 grid grid-cols-1 border-t border-l border-line sm:grid-cols-3">
+            {[
+              ["At reception by the customer's time", pctText(sla.at_reception_on_time_pct), `${sla.delivered} orders delivered`],
+              ['Picked up within target', pctText(sla.pickup_within_target_pct), `Average ${minText(sla.avg_pickup_minutes)}`],
+              ['Reached reception within target', pctText(sla.delivery_within_target_pct), `Average ${minText(sla.avg_delivery_minutes)}`],
+            ].map(([label, v, sub]) => (
+              <div key={label} className="border-r border-b border-line p-4">
+                <dt className="text-sm text-ink/65">{label}</dt>
+                <dd className="num mt-1 text-3xl font-extrabold">{v}</dd>
+                <dd className="text-sm text-ink/65">{sub}</dd>
+              </div>
+            ))}
+          </dl>
+
+          <h3 className="mt-8 font-bold">By delivery partner</h3>
+          <DataTable
+            open
+            head={['Partner', 'Deliveries', 'Avg pickup', 'Avg to reception', 'On time']}
+            rows={sla.partners.map((p) => [p.name, p.deliveries, minText(p.avg_pickup_minutes), minText(p.avg_delivery_minutes), pctText(p.on_time_pct)])}
+          />
+
+          {sla.late.length > 0 && (
+            <>
+              <h3 className="mt-8 font-bold">Missed a target</h3>
+              <DataTable
+                open
+                head={['Order', 'Customer time', 'At reception', 'Pickup', 'To reception', 'Partner']}
+                rows={sla.late.map((l) => [
+                  `#${l.id}`,
+                  fmtTime(l.pickup_time),
+                  `${fmtTime(l.ready_at)}${l.minutes_late > 0 ? ` (${l.minutes_late} min late)` : ''}`,
+                  `${l.pickup_minutes} min`,
+                  `${l.delivery_minutes} min`,
+                  l.partner,
+                ])}
+              />
+            </>
+          )}
+        </>
+      )}
+    </section>
   );
 }

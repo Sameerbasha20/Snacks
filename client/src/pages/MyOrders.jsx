@@ -50,7 +50,7 @@ export default function MyOrders() {
   useSocketEvent('order:updated', upsert);
   useSocketEvent('order:ready', upsert);
 
-  const active = orders?.filter((o) => ['placed', 'accepted', 'preparing', 'ready'].includes(o.status)) ?? [];
+  const active = orders?.filter((o) => ['placed', 'accepted', 'preparing', 'cooked', 'on_the_way', 'ready'].includes(o.status)) ?? [];
   const past = orders?.filter((o) => !active.includes(o)) ?? [];
 
   return (

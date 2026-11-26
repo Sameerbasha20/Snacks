@@ -24,8 +24,8 @@ function ReadyPanel({ order }) {
       className="rounded-xl bg-saffron p-6 sm:p-8"
       role="status"
     >
-      <p className="text-2xl font-extrabold sm:text-3xl">Your food is ready.</p>
-      <p className="mt-1 text-ink/80">Show this number at the counter.</p>
+      <p className="text-2xl font-extrabold sm:text-3xl">Your food is at reception.</p>
+      <p className="mt-1 text-ink/80">Show this number at reception to collect it.</p>
       <p className="num mt-6 text-[5.5rem] leading-none font-extrabold tracking-tight sm:text-[7rem]">{order.id}</p>
     </motion.div>
   );
@@ -134,7 +134,7 @@ export default function OrderTrack() {
 
   const isOwner = user?.id === order.user_id;
   const canCancel = isOwner && ['placed', 'accepted'].includes(order.status) && now < new Date(order.cancel_deadline).getTime();
-  const active = ['placed', 'accepted', 'preparing'].includes(order.status);
+  const active = ['placed', 'accepted', 'preparing', 'cooked', 'on_the_way'].includes(order.status);
 
   const cancel = async () => {
     setBusy(true);
@@ -151,8 +151,8 @@ export default function OrderTrack() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 pt-8 pb-32 sm:px-6">
-      <Link to={user?.role === 'user' ? '/orders' : '/kitchen'} className="btn btn-quiet -ml-1 text-sm text-ink/70">
-        {user?.role === 'user' ? 'All my orders' : 'Back to kitchen'}
+      <Link to={{ user: '/orders', delivery: '/delivery' }[user?.role] ?? '/kitchen'} className="btn btn-quiet -ml-1 text-sm text-ink/70">
+        {{ user: 'All my orders', delivery: 'Back to deliveries' }[user?.role] ?? 'Back to kitchen'}
       </Link>
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <h1 className="text-4xl sm:text-5xl">Order {order.id}</h1>
@@ -176,7 +176,7 @@ export default function OrderTrack() {
             <p className="text-xl font-bold">This order was cancelled</p>
             <p className="mt-1 text-ink/70">
               {order.payment_status === 'failed'
-                ? "The shop couldn't find your UPI payment, so the order was cancelled. If money did leave your account, show the UTR at the counter."
+                ? "The shop couldn't find your UPI payment, so the order was cancelled. If money did leave your account, show the UTR at reception."
                 : order.cancelled_by === 'customer'
                   ? 'You cancelled it.'
                   : 'The shop cancelled it.'}{' '}
@@ -226,7 +226,7 @@ export default function OrderTrack() {
           </div>
         )}
         {isOwner && !canCancel && ['placed', 'accepted'].includes(order.status) && (
-          <p className="text-sm text-ink/65">Free cancellation closed at {fmtTime(order.cancel_deadline)}. Please speak to the counter if your plans change.</p>
+          <p className="text-sm text-ink/65">Free cancellation closed at {fmtTime(order.cancel_deadline)}. Please speak to reception if your plans change.</p>
         )}
 
         <section>
@@ -259,10 +259,10 @@ export default function OrderTrack() {
             {order.payment_ref && order.payment_status !== 'unpaid' && <span className="num">, ref {order.payment_ref}</span>}
           </p>
           {order.payment_status === 'paid' && order.total > order.amount_paid && (
-            <p className="mt-1 text-right text-sm font-semibold">Pay the remaining {money(order.total - order.amount_paid)} at the counter.</p>
+            <p className="mt-1 text-right text-sm font-semibold">Pay the remaining {money(order.total - order.amount_paid)} at reception.</p>
           )}
           {order.payment_status === 'paid' && order.total < order.amount_paid && (
-            <p className="mt-1 text-right text-sm font-semibold">The shop changed your order. Collect {money(order.amount_paid - order.total)} back at the counter.</p>
+            <p className="mt-1 text-right text-sm font-semibold">The shop changed your order. Collect {money(order.amount_paid - order.total)} back at reception.</p>
           )}
         </section>
       </div>

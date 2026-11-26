@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { getSettings, listOrders } from './db.js';
+import { getSettings, listOrders, q } from './db.js';
 import { HttpError } from './orderRules.js';
 import { nextDateKey, shopDateKey, shopDayStartFromKey, shopHour, SHOP_TZ } from './time.js';
 
@@ -86,8 +86,73 @@ export async function buildReport(from, to, { withOrders = false } = {}) {
       .map(({ ratingSum, ...d }) => ({ ...d, revenue: round(d.revenue), avg_rating: d.ratings ? round(ratingSum / d.ratings) : null }))
       .sort((a, b) => b.qty - a.qty || b.revenue - a.revenue),
   };
+  report.sla = await deliverySla(orders, settings);
   if (withOrders) report.orders = orders;
   return report;
+}
+
+const mins = (a, b) => (new Date(b).getTime() - new Date(a).getTime()) / 60000;
+const pct = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : null);
+const avg = (list) => (list.length ? round(list.reduce((a, b) => a + b, 0) / list.length) : null);
+
+/**
+ * Delivery SLA for orders that went kitchen -> delivery partner -> reception.
+ *   pickup:   partner collects within sla_pickup_minutes of the kitchen marking it cooked
+ *   delivery: at reception within sla_delivery_minutes of being picked up
+ *   promise:  at reception by the customer's chosen pickup time
+ */
+async function deliverySla(orders, settings) {
+  const target = { pickup: settings.sla_pickup_minutes, delivery: settings.sla_delivery_minutes };
+  const names = new Map((await q("SELECT id, name FROM users WHERE role IN ('delivery','admin')")).map((u) => [u.id, u.name]));
+  const done = orders.filter((o) => o.status !== 'cancelled' && o.cooked_at && o.picked_up_at && o.ready_at);
+  const people = new Map();
+  const late = [];
+  let pickupOk = 0;
+  let deliveryOk = 0;
+  let promiseOk = 0;
+  const pickups = [];
+  const drives = [];
+  for (const o of done) {
+    const p = mins(o.cooked_at, o.picked_up_at);
+    const d = mins(o.picked_up_at, o.ready_at);
+    const onTime = new Date(o.ready_at) <= new Date(o.pickup_time);
+    pickups.push(p);
+    drives.push(d);
+    if (p <= target.pickup) pickupOk++;
+    if (d <= target.delivery) deliveryOk++;
+    if (onTime) promiseOk++;
+    const who = o.picked_up_by ?? o.delivered_by;
+    const row = people.get(who) || { name: names.get(who) || 'Unknown', deliveries: 0, pickups: [], drives: [], onTime: 0 };
+    row.deliveries++;
+    row.pickups.push(p);
+    row.drives.push(d);
+    if (onTime) row.onTime++;
+    people.set(who, row);
+    if (p > target.pickup || d > target.delivery || !onTime) {
+      late.push({
+        id: o.id,
+        pickup_time: o.pickup_time,
+        ready_at: o.ready_at,
+        pickup_minutes: round(p),
+        delivery_minutes: round(d),
+        minutes_late: onTime ? 0 : round(mins(o.pickup_time, o.ready_at)),
+        partner: row.name,
+      });
+    }
+  }
+  return {
+    targets: target,
+    delivered: done.length,
+    pickup_within_target_pct: pct(pickupOk, done.length),
+    delivery_within_target_pct: pct(deliveryOk, done.length),
+    at_reception_on_time_pct: pct(promiseOk, done.length),
+    avg_pickup_minutes: avg(pickups),
+    avg_delivery_minutes: avg(drives),
+    partners: [...people.values()]
+      .map((r) => ({ name: r.name, deliveries: r.deliveries, avg_pickup_minutes: avg(r.pickups), avg_delivery_minutes: avg(r.drives), on_time_pct: pct(r.onTime, r.deliveries) }))
+      .sort((a, b) => b.deliveries - a.deliveries),
+    late: late.sort((a, b) => b.minutes_late - a.minutes_late || b.delivery_minutes - a.delivery_minutes).slice(0, 50),
+  };
 }
 
 const hourLabel = (h) => `${h % 12 || 12} ${h < 12 ? 'am' : 'pm'}`;
@@ -139,6 +204,40 @@ export async function reportWorkbook(r) {
     [['Hour', 'label', 10], ['Orders', 'orders', 10], ['Revenue', 'revenue', 14, RUPEES]],
     r.hours.map((h) => ({ ...h, label: hourLabel(h.hour) }))
   );
+  if (r.sla) {
+    const t = r.sla.targets;
+    const ws = wb.addWorksheet('Delivery SLA');
+    ws.columns = [{ width: 44 }, { width: 16 }];
+    ws.addRows([
+      ['Delivery SLA'],
+      [`Pickup target: within ${t.pickup} min of cooking`],
+      [`Delivery target: at reception within ${t.delivery} min of pickup`],
+      [],
+      ['Orders delivered to reception', r.sla.delivered],
+      ['Picked up within target (%)', r.sla.pickup_within_target_pct],
+      ['Delivered within target (%)', r.sla.delivery_within_target_pct],
+      ["At reception by the customer's time (%)", r.sla.at_reception_on_time_pct],
+      ['Average minutes to pick up', r.sla.avg_pickup_minutes],
+      ['Average minutes kitchen to reception', r.sla.avg_delivery_minutes],
+    ]);
+    ws.getRow(1).font = { bold: true, size: 14 };
+    sheet(
+      wb,
+      'SLA by partner',
+      [['Delivery partner', 'name', 24], ['Deliveries', 'deliveries', 12], ['Avg pickup (min)', 'avg_pickup_minutes', 16], ['Avg delivery (min)', 'avg_delivery_minutes', 18], ['On time (%)', 'on_time_pct', 12]],
+      r.sla.partners
+    );
+    sheet(
+      wb,
+      'Late deliveries',
+      [['Order', 'id', 8], ['Customer time', 'due', 20], ['At reception', 'arrived', 20], ['Pickup (min)', 'pickup_minutes', 12], ['Delivery (min)', 'delivery_minutes', 14], ['Minutes late', 'minutes_late', 13], ['Partner', 'partner', 20]],
+      r.sla.late.map((l) => ({
+        ...l,
+        due: new Date(l.pickup_time).toLocaleString('en-IN', { timeZone: r.timezone, dateStyle: 'medium', timeStyle: 'short' }),
+        arrived: new Date(l.ready_at).toLocaleString('en-IN', { timeZone: r.timezone, dateStyle: 'medium', timeStyle: 'short' }),
+      }))
+    );
+  }
   if (r.orders) {
     sheet(
       wb,

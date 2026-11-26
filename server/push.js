@@ -26,7 +26,7 @@ export async function notifyReady(order) {
   try {
     await sendPush(order.user_id, {
       title: `Order ${order.id} is ready`,
-      body: 'Collect it from the counter.',
+      body: 'Collect it from reception.',
       url: `/orders/${order.id}`,
       tag: `order-${order.id}`,
     });

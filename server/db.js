@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS users (
   phone TEXT,
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user','kitchen','admin')),
+  role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user','kitchen','admin','delivery')),
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS menu_items (
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS orders (
   user_id INTEGER NOT NULL REFERENCES users(id),
   pickup_time TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'placed'
-    CHECK (status IN ('placed','accepted','preparing','ready','collected','cancelled')),
+    CHECK (status IN ('placed','accepted','preparing','cooked','on_the_way','ready','collected','cancelled')),
   total DOUBLE PRECISION NOT NULL,
   note TEXT,
   cancel_deadline TEXT NOT NULL,
@@ -112,6 +112,15 @@ ALTER TABLE menu_items ADD CONSTRAINT menu_items_category_check CHECK (category 
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS subtotal DOUBLE PRECISION;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid';
+-- Kitchen is away from the office: a delivery partner carries cooked food to reception.
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('user','kitchen','admin','delivery'));
+ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
+ALTER TABLE orders ADD CONSTRAINT orders_status_check CHECK (status IN ('placed','accepted','preparing','cooked','on_the_way','ready','collected','cancelled'));
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cooked_at TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS picked_up_at TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS picked_up_by INTEGER;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_by INTEGER;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_ref TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS amount_paid DOUBLE PRECISION NOT NULL DEFAULT 0;
@@ -155,6 +164,9 @@ const DEFAULT_SETTINGS = {
   // Where customers send UPI payments. Staff confirm each payment by hand (no gateway yet).
   upi_id: '9642388892-3@ibl',
   upi_name: '', // empty: use the shop name
+  // Delivery SLA: minutes from 'cooked' to picked up, and from picked up to reception.
+  sla_pickup_minutes: '10',
+  sla_delivery_minutes: '15',
 };
 
 /** Short, readable code like SAMEE7K2. Unique across users. */
@@ -269,6 +281,8 @@ export async function getSettings() {
     referral_amount: Number(s.referral_amount),
     upi_id: s.upi_id,
     upi_name: s.upi_name || s.shop_name,
+    sla_pickup_minutes: Number(s.sla_pickup_minutes),
+    sla_delivery_minutes: Number(s.sla_delivery_minutes),
   };
 }
 

@@ -7,8 +7,9 @@ Orders appear on the kitchen screen; when the kitchen marks one ready, the custo
 | Role | What they can do |
 |---|---|
 | **Customer** | Registers, orders with a pickup time at least an hour ahead, follows the order live, cancels before the cancel deadline |
-| **Kitchen** | Kitchen screen: Accept, Start cooking, Mark ready (alerts the customer), Collected |
-| **Admin** | Everything the kitchen can do, plus editing any order (items, pickup time, status, **cancel deadline**), the menu, opening hours and rules, staff accounts, and the QR code poster |
+| **Kitchen** | Kitchen screen: Accept, Start cooking, **Cooked, ready for pickup**. Each card shows a cook-by time so the food reaches reception by the customer's time |
+| **Delivery** | Delivery screen (on a phone): **Picked up** at the kitchen, **Delivered to reception** (alerts the customer), **Handed to customer**. Each order shows its SLA timer |
+| **Admin** | Everything the kitchen and delivery can do, plus editing any order (items, pickup time, status, **cancel deadline**), the menu, opening hours and rules, staff accounts, and the QR code poster |
 
 ## Customer features
 - **Pay by UPI to the shop:** after ordering, the customer taps Pay and their phone shows its UPI apps (GPay, PhonePe, Paytm, BHIM) with the amount filled in; on a computer they scan a QR. They then enter the 12-digit UTR. Kitchen or admin checks the money arrived and taps **Payment received**; the kitchen cannot start cooking before that. **Not received** cancels the order. Cancelling a paid order shows **Refund due** in Admin > Orders; send it from your UPI app and tap **I've sent the refund**. Set the UPI ID in Admin > Opening hours & rules. There is no automatic confirmation: that needs a payment gateway such as Razorpay or Cashfree.
@@ -17,6 +18,11 @@ Orders appear on the kitchen screen; when the kitchen marks one ready, the custo
 - **Favourites and combos:** customers heart dishes (shown first on the menu). Admin builds combos from existing dishes in Admin → Menu, sets the price, and customers see what they save. The kitchen sees what is inside each combo.
 - **Referrals (give ₹20, get ₹20):** every customer has a code on the Rewards page. A friend who signs up with it gets credit at once; the referrer gets the same when that friend collects their first order. Credit comes off at checkout and returns if the order is cancelled. The amount is in Admin → Opening hours & rules.
 - **Ratings:** after pickup, customers rate each dish 1–5 stars. Averages show on the menu and in reports.
+
+## Delivery and SLA
+The kitchen is away from the office. Order journey: placed → accepted → cooking → **cooked** (waiting at the kitchen) → **on the way** → **ready at reception** → collected. The customer is alerted when it reaches reception.
+
+SLA targets (Admin > Opening hours & rules): picked up within **10 min** of cooking, at reception within **15 min** of pickup, and at reception by the customer's pickup time. The kitchen's cook-by time = pickup time − both targets. Sales reports show on-time %, average times, results per delivery partner and every order that missed a target (also in the Excel export). Create delivery accounts in Admin > Staff.
 
 ## Admin: sales reports
 Admin → Sales reports shows revenue by day, busiest pickup hours and best sellers (with ratings) for any date range, grouped by pickup time in the shop's timezone. **Download Excel** exports Summary, Daily, Best sellers, Peak hours and Orders sheets.
