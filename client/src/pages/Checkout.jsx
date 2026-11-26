@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import { api, fmtClock, fmtDay, fmtTime, money } from '../lib/api';
 import { useCart } from '../lib/cart';
+import { wakeSocket } from '../lib/socket';
 import { buildSlots, useSettings } from '../lib/slots';
 import { QtyStepper } from '../components/CartDrawer';
 import FoodImage from '../components/FoodImage';
@@ -64,6 +65,7 @@ export default function Checkout() {
         },
       });
       clear();
+      wakeSocket(); // start watching this order for updates
       navigate(`/orders/${order.id}`, { state: { justPlaced: true } });
     } catch (e) {
       toast.error(e.message);

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import toast from 'react-hot-toast';
 import { api, fmtDay, fmtTime, money, PAYMENT_PENDING, relative } from '../../lib/api';
-import { useSocketEvent } from '../../lib/socket';
+import { useSocketEvent, wakeSocket } from '../../lib/socket';
 import { chime } from '../../lib/notify';
 import { useNow } from '../../components/CancelCountdown';
 
@@ -183,7 +183,12 @@ export default function KitchenBoard() {
       <div className="mx-auto max-w-6xl px-4 pt-6 pb-28 sm:px-6">
         <div className="flex items-baseline justify-between gap-4">
           <h1 className="text-3xl sm:text-4xl">Kitchen</h1>
-          <p className="text-sm text-paper/55">Sorted by pickup time. Updates live.</p>
+          <div className="flex items-baseline gap-3 text-sm text-paper/55">
+            <p className="hidden sm:block">Sorted by pickup time. Checks every 10 seconds while busy, every 10 minutes when quiet.</p>
+            <button onClick={() => wakeSocket()} className="btn min-h-9 shrink-0 border-[1.5px] border-paper/30 px-3 text-sm text-paper hover:border-paper">
+              Check now
+            </button>
+          </div>
         </div>
 
         {!orders ? (

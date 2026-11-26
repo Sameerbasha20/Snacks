@@ -9,14 +9,22 @@ import { getToken } from './api';
     order:ready    an order just became ready (customer)
 */
 const bus = new EventTarget();
-// Each poll is a paid serverless request and keeps the database awake, so poll only as often as people notice.
-// Staff screens stay quick; customers slow right down in the background (the page refreshes as soon as they return,
-// and push notifications cover "your food is ready").
-const INTERVALS = { staff: { visible: 5000, hidden: 30_000 }, user: { visible: 6000, hidden: 120_000 } };
-const interval = () => {
-  const r = INTERVALS[role === 'user' ? 'user' : 'staff'];
-  return document.hidden ? r.hidden : r.visible;
+/*
+  Built to stay inside free hosting quotas: every poll is a counted request, and any poll within 5 minutes keeps
+  the free database awake (it has a monthly limit of awake hours). So:
+  - Customers poll only while they have an order on the go. Browsing the menu costs nothing.
+  - Kitchen/admin poll every 10 s while there are orders to handle, and every 10 min when it's quiet, which lets
+    the database sleep. Orders need an hour's notice, so a few minutes' delay in a quiet spell is harmless.
+  The server says which case applies (`active` in /api/events). A page coming back into view always checks at once.
+*/
+const QUIET = null; // stop polling
+const INTERVALS = {
+  user: { active: { visible: 6000, hidden: 120_000 }, idle: { visible: QUIET, hidden: QUIET } },
+  staff: { active: { visible: 10_000, hidden: 30_000 }, idle: { visible: 600_000, hidden: 600_000 } },
 };
+let active = true; // until the server tells us otherwise
+let wakes = 0; // bumped by wakeSocket, so an answer to an older request can't switch polling back off
+const interval = () => INTERVALS[role === 'user' ? 'user' : 'staff'][active ? 'active' : 'idle'][document.hidden ? 'hidden' : 'visible'];
 
 let timer = null;
 let since = null;
@@ -31,10 +39,12 @@ function emit(event, payload) {
 async function tick() {
   const token = getToken();
   if (!token || !running) return;
+  const gen = wakes;
   try {
     const res = await fetch(`/api/events?since=${encodeURIComponent(since)}`, { headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) {
-      const { now, orders } = await res.json();
+      const { now, orders, active: busy } = await res.json();
+      if (gen === wakes) active = busy !== false;
       for (const o of orders) {
         const prev = seen.get(o.id);
         if (prev === o.updated_at) continue; // overlap window: already handled
@@ -49,7 +59,22 @@ async function tick() {
   } catch {
     /* offline for a moment; try again next tick */
   }
-  if (running) timer = setTimeout(tick, interval());
+  schedule();
+}
+
+function schedule() {
+  clearTimeout(timer);
+  const ms = interval();
+  if (running && ms) timer = setTimeout(tick, ms);
+}
+
+/** Something just happened that needs watching (e.g. the customer placed an order): poll now and at full speed. */
+export function wakeSocket() {
+  if (!running) return;
+  wakes++;
+  active = true;
+  clearTimeout(timer);
+  tick();
 }
 
 function onVisible() {
@@ -66,8 +91,9 @@ export function connectSocket(userRole) {
   running = true;
   since = new Date().toISOString();
   seen.clear();
+  active = true;
   document.addEventListener('visibilitychange', onVisible);
-  timer = setTimeout(tick, interval());
+  tick(); // one check up front to learn whether there's anything to watch
 }
 
 export function disconnectSocket() {
