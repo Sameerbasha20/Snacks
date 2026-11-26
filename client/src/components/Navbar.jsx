@@ -91,9 +91,14 @@ export default function Navbar() {
             </button>
           ) : (
             !['/login', '/register'].includes(pathname) && (
-              <Link to="/login" className="btn btn-outline min-h-10">
-                Log in
-              </Link>
+              <>
+                <Link to="/login" className="btn btn-outline min-h-10">
+                  Log in
+                </Link>
+                <Link to="/login" state={{ from: '/menu' }} className="btn btn-primary hidden min-h-10 sm:inline-flex">
+                  Order now
+                </Link>
+              </>
             )
           )}
         </div>
