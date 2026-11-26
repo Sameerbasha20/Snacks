@@ -32,7 +32,9 @@ export function useDiet() {
   return [diet, setDiet];
 }
 
-export const matchesDiet = (diet, item) => diet === 'all' || (diet === 'veg' ? item.is_veg !== false : item.is_veg === false);
+// Drinks go with any meal, so they show under Veg and Non-veg alike.
+export const matchesDiet = (diet, item) =>
+  diet === 'all' || item.category === 'drinks' || (diet === 'veg' ? item.is_veg !== false : item.is_veg === false);
 
 /** The standard Indian food mark: green square with a dot for veg, red square with a triangle for non-veg. */
 export function VegMark({ veg, size = 14, className = '', decorative = false }) {
