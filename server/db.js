@@ -1,19 +1,35 @@
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import { randomInt } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { ADMIN_SEED, COMBO_SEED_V2, MENU_SEED, MENU_SEED_V2, MOVE_TO_BURGERS } from './seedData.js';
 
 // COUNT(*) etc. come back as bigint strings; our numbers are small, so parse them.
 pg.types.setTypeParser(20, (v) => Number(v));
 
-if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL is not set. Run `vercel env pull .env.local` or add it to .env.');
+// Supabase when SUPABASE_DB_URL is set; otherwise the older DATABASE_URL (Neon), kept as a fallback.
+const DB_URL = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+if (!DB_URL) {
+  throw new Error('SUPABASE_DB_URL (or DATABASE_URL) is not set. Run `vercel env pull .env.local` or add it to .env.');
 }
+
+/**
+ * Supabase signs its certificates with its own root CA, which Node doesn't ship with,
+ * so verify against that CA instead of switching verification off.
+ */
+function sslFor(url) {
+  if (!/supabase\.(com|co)/.test(url)) return undefined; // Neon: the URL's sslmode is enough
+  const ca = readFileSync(fileURLToPath(new URL('./supabase-ca.crt', import.meta.url)), 'utf8');
+  return { ca, rejectUnauthorized: true };
+}
+const withoutSslMode = (url) => url.replace(/([?&])sslmode=[^&]*&?/, '$1').replace(/[?&]$/, '');
 
 // Small pool: on Vercel each function instance holds its own connections.
 export const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: sslFor(DB_URL) ? withoutSslMode(DB_URL) : DB_URL,
+  ssl: sslFor(DB_URL),
   max: process.env.VERCEL ? 3 : 10,
   idleTimeoutMillis: 10_000,
 });
