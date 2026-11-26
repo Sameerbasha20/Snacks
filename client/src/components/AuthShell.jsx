@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { motion } from 'motion/react';
+import Icon from './Icon';
 
 /** Two-column auth layout: form on the left, a food photo on wide screens. */
 export default function AuthShell({ title, subtitle, children, shakeKey }) {
@@ -25,10 +27,38 @@ export default function AuthShell({ title, subtitle, children, shakeKey }) {
 }
 
 export function Field({ label, hint, ...props }) {
+  if (props.type === 'password') return <PasswordField label={label} hint={hint} {...props} />;
   return (
     <label className="block">
       <span className="label">{label}</span>
       <input className="input" {...props} />
+      {hint && <span className="mt-1 block text-sm text-muted">{hint}</span>}
+    </label>
+  );
+}
+
+/** Password input with an eye button to show what was typed (handy on phones and when pasting). */
+export function PasswordField({ label, hint, className = 'input', ...props }) {
+  const [show, setShow] = useState(false);
+  const input = (
+    <span className="relative block">
+      <input {...props} type={show ? 'text' : 'password'} className={`${className} pr-12`} />
+      <button
+        type="button"
+        onClick={() => setShow((v) => !v)}
+        aria-label={show ? 'Hide password' : 'Show password'}
+        aria-pressed={show}
+        className="absolute inset-y-0 right-0 grid w-12 place-items-center text-ink/55 hover:text-ink"
+      >
+        <Icon name={show ? 'eye-off' : 'eye'} size={20} />
+      </button>
+    </span>
+  );
+  if (!label) return input;
+  return (
+    <label className="block">
+      <span className="label">{label}</span>
+      {input}
       {hint && <span className="mt-1 block text-sm text-muted">{hint}</span>}
     </label>
   );

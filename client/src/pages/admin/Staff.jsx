@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import Modal from '../../components/Modal';
+import { PasswordField } from '../../components/AuthShell';
 
 const EMPTY = { name: '', email: '', phone: '', password: '', role: 'kitchen' };
 const ROLE_LABEL = { kitchen: 'Kitchen', delivery: 'Delivery', admin: 'Admin' };
@@ -116,7 +117,7 @@ export default function Staff() {
           </label>
           <label className="block">
             <span className="label">Password</span>
-            <input className="input" type="password" minLength={6} required value={form.password} onChange={set('password')} />
+            <PasswordField type="password" autoComplete="new-password" minLength={6} required value={form.password} onChange={set('password')} />
           </label>
           <button disabled={busy} className="btn btn-dark w-full">
             Create account
